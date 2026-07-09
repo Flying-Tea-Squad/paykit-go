@@ -15,7 +15,7 @@ type Client struct {
 	httpClient *http.Client
 }
 
-// cfg is a parameter that takes type Config and returns a pointer to a Client and an error  
+// cfg is a parameter that takes type Config and returns a pointer to a Client and an errors 
 func New(cfg Config) (*Client, error) {
 	// ensure the required values are present
 	if cfg.ConsumerKey == "" {
