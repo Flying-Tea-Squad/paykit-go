@@ -40,7 +40,7 @@ func TestAccountBalanceSerialization(t *testing.T) {
 }
 
 func TestQRCodeSerialization(t *testing.T) {
-	req := QRRequest{
+	req := DynamicQRRequest{
 		IdempotencyKey: "qr-gen-771",
 		MerchantName:   "TEST SUPERMARKET",
 		RefNo:          "Invoice Test",
