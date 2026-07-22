@@ -13,7 +13,7 @@ type Client struct {
 
 }
 
-func (c *Client) STKPush(ctx context.Context, req STKPushRequest) (*STKPushRequest, error){
+func (c *Client) STKPush(ctx context.Context, req STKPushRequest) (*STKPushResponse, error){
 
 	body, err := json.Marshal(req)
 
@@ -32,8 +32,14 @@ func (c *Client) STKPush(ctx context.Context, req STKPushRequest) (*STKPushReque
 		return nil,err
 	}
 
-	_ = httpReq
+	
 
-	return &STKPushResponse{}, nil
+	resp, err := c.httpClient.Do(httpReq)
+if err != nil {
+	return nil, err
+}
+defer resp.Body.Close()
+
+return &STKPushResponse{}, nil
 	// req, err := http.NewRequest("POST", "/mpesa/stkpush/v1/processrequest", )
 }
