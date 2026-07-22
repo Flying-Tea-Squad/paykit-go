@@ -31,8 +31,10 @@ func TestSTKPushUsesCorrectendpoint(t *testing.T) {
 
 	defer server.Close()
 
+
 	client := &Client{
-		
+		baseURL: server.URL,
+		httpClient: server.Client(),
 	}
 
 
