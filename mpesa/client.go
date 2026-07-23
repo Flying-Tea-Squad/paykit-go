@@ -10,7 +10,6 @@ import (
 type Client struct {
 	baseURL string
 	httpClient *http.Client
-
 }
 
 func (c *Client) STKPush(ctx context.Context, req STKPushRequest) (*STKPushResponse, error){
@@ -32,14 +31,19 @@ func (c *Client) STKPush(ctx context.Context, req STKPushRequest) (*STKPushRespo
 		return nil,err
 	}
 
-	
-
 	resp, err := c.httpClient.Do(httpReq)
-if err != nil {
-	return nil, err
-}
-defer resp.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
 
-return &STKPushResponse{}, nil
+	var stkResp STKPushResponse
+
+	err = json.NewDecoder(resp.Body).Decode(&stkResp)
+	if err != nil {
+		return nil, err
+	}
+
+	return &stkResp, nil
 	// req, err := http.NewRequest("POST", "/mpesa/stkpush/v1/processrequest", )
 }
