@@ -56,6 +56,30 @@ func TestGetAccessToken_Success(t *testing.T) {
 	}
 }
 
+func TestGetAccessToken_UnexportedMethod(t *testing.T) {
+	consumerKey := "test_key"
+	consumerSecret := "test_secret"
+	expectedToken := "unexported_token"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"access_token": "` + expectedToken + `", "expires_in": "3599"}`))
+	}))
+	defer server.Close()
+
+	tm := NewTokenManager(server.Client(), consumerKey, consumerSecret, server.URL)
+
+	token, err := tm.getAccessToken(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error calling unexported getAccessToken: %v", err)
+	}
+
+	if token != expectedToken {
+		t.Errorf("expected token %s, got %s", expectedToken, token)
+	}
+}
+
 func TestGetAccessToken_Caching(t *testing.T) {
 	consumerKey := "test_key"
 	consumerSecret := "test_secret"
@@ -113,10 +137,9 @@ func TestGetAccessToken_RefreshOnExpiry(t *testing.T) {
 	defer server.Close()
 
 	tm := NewTokenManager(server.Client(), consumerKey, consumerSecret, server.URL)
-	// Set small buffer so expiry occurs fast in test
 	tm.expiryBuffer = 100 * time.Millisecond
 
-	// First call returns token_1 with 1 sec expiry
+	// First call returns token_1
 	token1, err := tm.GetAccessToken(context.Background())
 	if err != nil {
 		t.Fatalf("first call error: %v", err)
@@ -152,7 +175,7 @@ func TestGetAccessToken_Concurrency(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&requestCount, 1)
-		time.Sleep(10 * time.Millisecond) // simulate net delay
+		time.Sleep(10 * time.Millisecond)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"access_token": "concurrent_token", "expires_in": "3599"}`))
@@ -164,7 +187,7 @@ func TestGetAccessToken_Concurrency(t *testing.T) {
 	var wg sync.WaitGroup
 	workers := 20
 	tokens := make([]string, workers)
-	errors := make([]error, workers)
+	errs := make([]error, workers)
 
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
@@ -172,15 +195,15 @@ func TestGetAccessToken_Concurrency(t *testing.T) {
 			defer wg.Done()
 			tok, err := tm.GetAccessToken(context.Background())
 			tokens[idx] = tok
-			errors[idx] = err
+			errs[idx] = err
 		}(i)
 	}
 
 	wg.Wait()
 
 	for i := 0; i < workers; i++ {
-		if errors[i] != nil {
-			t.Errorf("worker %d failed: %v", i, errors[i])
+		if errs[i] != nil {
+			t.Errorf("worker %d failed: %v", i, errs[i])
 		}
 		if tokens[i] != "concurrent_token" {
 			t.Errorf("worker %d got token %s, expected concurrent_token", i, tokens[i])
@@ -214,10 +237,48 @@ func TestGetAccessToken_HTTPError(t *testing.T) {
 	}
 }
 
-func TestAuthResponse_UnmarshalJSON_NumericExpiresIn(t *testing.T) {
-	tm := NewTokenManager(nil, "key", "secret", "http://localhost")
-	_ = tm
+func TestGetAccessToken_InvalidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{invalid_json_body`))
+	}))
+	defer server.Close()
 
+	tm := NewTokenManager(server.Client(), "key", "secret", server.URL)
+	_, err := tm.GetAccessToken(context.Background())
+	if err == nil {
+		t.Error("expected error for invalid JSON body, got nil")
+	}
+}
+
+func TestGetAccessToken_EmptyToken(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"access_token": "", "expires_in": "3600"}`))
+	}))
+	defer server.Close()
+
+	tm := NewTokenManager(server.Client(), "key", "secret", server.URL)
+	_, err := tm.GetAccessToken(context.Background())
+	if err == nil {
+		t.Error("expected error for empty access token, got nil")
+	}
+}
+
+func TestGetAccessToken_ContextCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel context immediately
+
+	tm := NewTokenManager(nil, "key", "secret", "http://localhost")
+	_, err := tm.GetAccessToken(ctx)
+	if err == nil {
+		t.Error("expected error for cancelled context, got nil")
+	}
+}
+
+func TestAuthResponse_UnmarshalJSON_NumericExpiresIn(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -232,5 +293,12 @@ func TestAuthResponse_UnmarshalJSON_NumericExpiresIn(t *testing.T) {
 	}
 	if tok != "num_token" {
 		t.Errorf("expected num_token, got %s", tok)
+	}
+}
+
+func TestNewTokenManager_NilClient(t *testing.T) {
+	tm := NewTokenManager(nil, "key", "secret", "http://localhost")
+	if tm.client == nil {
+		t.Error("expected default HTTP client when nil is passed, got nil")
 	}
 }
