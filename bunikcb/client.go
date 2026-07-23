@@ -2,6 +2,7 @@ package bunikcb
 
 import (
 	"net/http"
+	"errors"
 )
 
 type Config struct {
