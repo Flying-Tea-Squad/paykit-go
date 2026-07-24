@@ -10,6 +10,7 @@ import (
 type Client struct {
 	baseURL string
 	httpClient *http.Client
+	passkey string
 }
 
 func (c *Client) STKPush(ctx context.Context, req STKPushRequest) (*STKPushResponse, error){
