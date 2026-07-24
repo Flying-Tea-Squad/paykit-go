@@ -31,6 +31,9 @@ func (c *Client) STKPush(ctx context.Context, req STKPushRequest) (*STKPushRespo
 		return nil,err
 	}
 
+	httpReq.Header.Set("Idempotency-Key", req.IdempotencyKey)
+
+
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, err
@@ -43,6 +46,7 @@ func (c *Client) STKPush(ctx context.Context, req STKPushRequest) (*STKPushRespo
 	if err != nil {
 		return nil, err
 	}
+
 
 	return &stkResp, nil
 	// req, err := http.NewRequest("POST", "/mpesa/stkpush/v1/processrequest", )
