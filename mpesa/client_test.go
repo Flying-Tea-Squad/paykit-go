@@ -4,6 +4,7 @@ import (
 	"net/http/httptest"
 	"testing"
 	"context"
+	"encoding/json"
 	
 	"net/http"
 )
@@ -166,4 +167,58 @@ func TestSTKPushIncludesIdempotencyHeader(t *testing.T) {
 	// if idempotencyKey != "stk-push-001" {
 	// 	t.Errorf("expected Idempotency-Key header %q, got %q", "stk-push-001", idempotencyKey)
 	// }
+}
+
+func TestSTKPushGeneratesTimestampPassword(t *testing.T) {
+	var received STKPushRequest
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request){
+		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"MerchantRequestID":"123",
+			"CheckoutRequestID":"456",
+			"ResponseCode":"0",
+			"ResponseDescription":"Success",
+			"CustomerMessage":"Accepted"
+		}`))
+
+	}))
+
+	defer server.Close()
+
+	client := &Client{
+		baseURL: server.URL,
+		httpClient : server.Client(),
+	}
+
+	req := STKPushRequest{
+		BusinessShortCode: "174379",
+		Amount:            1,
+		PartyA:            "254700000001",
+		PartyB:            "174379",
+		PhoneNumber:       "254700000001",
+		CallBackURL:       "https://example.com/callback",
+		AccountReference:  "INV001",
+		TransactionDesc:   "Payment",
+	}
+
+	_,err := client.STKPush(context.Background(), req)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if received.Timestamp == "" {
+		t.Errorf("expected TimeStamp to have legth 14 got %d", len(received.TimeStamp))
+	}
+
+	if received.Password == ""{
+		t.Errorf("expected password to be generated")
+	}
+
 }
