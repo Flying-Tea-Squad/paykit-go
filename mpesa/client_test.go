@@ -214,7 +214,7 @@ func TestSTKPushGeneratesTimestampPassword(t *testing.T) {
 	}
 
 	if received.Timestamp == "" {
-		t.Errorf("expected TimeStamp to have legth 14 got %d", len(received.TimeStamp))
+		t.Errorf("expected TimeStamp to have legth 14 got %d", len(received.Timestamp))
 	}
 
 	if received.Password == ""{
