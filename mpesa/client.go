@@ -17,8 +17,14 @@ type Client struct {
 
 func (c *Client) STKPush(ctx context.Context, req STKPushRequest) (*STKPushResponse, error){
 
+	req.Timestamp = generateTimeStamp()
+	req.Password = generatePassword(
+		req.BusinessShortCode,
+		c.passkey,
+		req.Timestamp,
+	)
 
-	
+
 	body, err := json.Marshal(req)
 
 	if err != nil {
