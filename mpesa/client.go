@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+	"encoding/base64"
 )
 
 type Client struct {
@@ -16,6 +17,8 @@ type Client struct {
 
 func (c *Client) STKPush(ctx context.Context, req STKPushRequest) (*STKPushResponse, error){
 
+
+	
 	body, err := json.Marshal(req)
 
 	if err != nil {
@@ -56,4 +59,10 @@ func (c *Client) STKPush(ctx context.Context, req STKPushRequest) (*STKPushRespo
 
 func generateTimeStamp() string{
 	return time.Now().Format("20060102150405")
+}
+
+func generatePassword(shortcode, passkey, timeStamp string) string{
+	raw := shortcode + passkey + timeStamp
+
+	return base64.StdEncoding.EncodeToString([]byte(raw))
 }
