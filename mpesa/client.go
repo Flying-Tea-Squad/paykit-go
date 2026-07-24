@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 )
 
 type Client struct {
@@ -51,4 +52,8 @@ func (c *Client) STKPush(ctx context.Context, req STKPushRequest) (*STKPushRespo
 
 	return &stkResp, nil
 	// req, err := http.NewRequest("POST", "/mpesa/stkpush/v1/processrequest", )
+}
+
+func generateTimeStamp() string{
+	return time.Now().Format("20060102150405")
 }
