@@ -135,7 +135,7 @@ func (c *HTTPClient) Do(ctx context.Context, req *http.Request) (*http.Response,
 				return resp, nil
 			}
 
-			io.Copy(io.Discard, resp.Body)
+			_, _ = io.Copy(io.Discard, resp.Body)
 			resp.Body.Close()
 		} else {
 			lastErr = err
@@ -235,8 +235,8 @@ func (c *HTTPClient) dumpRequest(req *http.Request) {
 		return
 	}
 
-	c.dumpWriter.Write(dump)
-	c.dumpWriter.Write([]byte("\n"))
+	_, _ = c.dumpWriter.Write(dump)
+	_, _ = c.dumpWriter.Write([]byte("\n"))
 }
 
 func (c *HTTPClient) dumpResponse(resp *http.Response) {
@@ -250,6 +250,6 @@ func (c *HTTPClient) dumpResponse(resp *http.Response) {
 		return
 	}
 
-	c.dumpWriter.Write(dump)
-	c.dumpWriter.Write([]byte("\n"))
+	_, _ = c.dumpWriter.Write(dump)
+	_, _ = c.dumpWriter.Write([]byte("\n"))
 }
