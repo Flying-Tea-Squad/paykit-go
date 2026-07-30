@@ -136,7 +136,7 @@ func (c *HTTPClient) Do(ctx context.Context, req *http.Request) (*http.Response,
 			}
 
 			_, _ = io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		} else {
 			lastErr = err
 			c.logDebug("http request failed",
