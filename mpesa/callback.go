@@ -13,14 +13,26 @@ import (
 // STKPushCallbackResult represents the final outcome Safaricom sends to an
 // application's callback URL after processing an STK Push request.
 type STKPushCallbackResult struct {
+	// MerchantRequestID and CheckoutRequestID correlate this asynchronous
+	// result with the STK Push request that the application sent earlier.
 	MerchantRequestID string
 	CheckoutRequestID string
-	ResultCode        int
-	ResultDesc        string
-	Msisdn            string
-	Amount            int
-	TransactionID     string
-	ReferenceData     map[string]any
+
+	// A nonzero ResultCode is a valid, successfully parsed payment outcome,
+	// not a parser error. For example, it may mean the customer cancelled.
+	ResultCode int
+	ResultDesc string
+
+	// Msisdn is normalized to text even when Daraja sends PhoneNumber as a
+	// JSON number, because a mobile number is an identifier, not a quantity.
+	Msisdn string
+	// Amount follows STKPushRequest.Amount and represents whole shillings.
+	Amount int
+	// TransactionID is Daraja's MpesaReceiptNumber under an SDK-friendly name.
+	TransactionID string
+	// ReferenceData preserves every CallbackMetadata item, including values
+	// the SDK does not recognize yet, so new provider fields are not lost.
+	ReferenceData map[string]any
 }
 
 type stkPushCallbackEnvelope struct {
@@ -30,11 +42,12 @@ type stkPushCallbackEnvelope struct {
 }
 
 type stkPushCallback struct {
-	MerchantRequestID string                   `json:"MerchantRequestID"`
-	CheckoutRequestID string                   `json:"CheckoutRequestID"`
-	ResultCode        *int                     `json:"ResultCode"`
-	ResultDesc        string                   `json:"ResultDesc"`
-	CallbackMetadata  *stkPushCallbackMetadata `json:"CallbackMetadata"`
+	MerchantRequestID string `json:"MerchantRequestID"`
+	CheckoutRequestID string `json:"CheckoutRequestID"`
+	// A pointer distinguishes a missing ResultCode from the valid success code 0.
+	ResultCode       *int                     `json:"ResultCode"`
+	ResultDesc       string                   `json:"ResultDesc"`
+	CallbackMetadata *stkPushCallbackMetadata `json:"CallbackMetadata"`
 }
 
 type stkPushCallbackMetadata struct {
@@ -42,7 +55,9 @@ type stkPushCallbackMetadata struct {
 }
 
 type stkPushCallbackItem struct {
-	Name  string          `json:"Name"`
+	Name string `json:"Name"`
+	// Daraja uses different JSON types for different metadata names. Keep the
+	// bytes untouched until Name tells us which concrete Go type to expect.
 	Value json.RawMessage `json:"Value"`
 }
 
@@ -58,6 +73,8 @@ func ParseSTKPushCallback(data []byte) (*STKPushCallbackResult, error) {
 		return nil, fmt.Errorf("mpesa: parse STK Push callback: invalid JSON: %w", err)
 	}
 
+	// Accept trailing whitespace, but reject a second value so callers cannot
+	// accidentally treat two concatenated callbacks as one verified payload.
 	var trailing any
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		if err == nil {
@@ -100,6 +117,9 @@ func ParseSTKPushCallback(data []byte) (*STKPushCallbackResult, error) {
 
 func populateSTKPushCallbackMetadata(callback *stkPushCallback, result *STKPushCallbackResult) error {
 	if callback.CallbackMetadata == nil {
+		// Failed payments normally omit metadata because no transaction was
+		// completed. A successful result cannot satisfy the public contract
+		// without its amount, receipt number, and customer number.
 		if *callback.ResultCode == 0 {
 			return errors.New("successful callback missing CallbackMetadata")
 		}
@@ -111,6 +131,8 @@ func populateSTKPushCallbackMetadata(callback *stkPushCallback, result *STKPushC
 	seen := make(map[string]struct{}, len(callback.CallbackMetadata.Items))
 	var hasAmount, hasTransactionID, hasMsisdn bool
 
+	// Daraja represents metadata as a list, and its item order is not part of
+	// the contract. Always dispatch by Name rather than by array position.
 	for _, item := range callback.CallbackMetadata.Items {
 		if strings.TrimSpace(item.Name) == "" {
 			return errors.New("metadata item has an empty Name")
@@ -120,6 +142,8 @@ func populateSTKPushCallbackMetadata(callback *stkPushCallback, result *STKPushC
 		}
 		seen[item.Name] = struct{}{}
 
+		// Preserve known and unknown values before extracting the typed fields.
+		// This makes the parser forward-compatible with additional Daraja items.
 		var referenceValue any
 		if len(item.Value) == 0 {
 			return fmt.Errorf("metadata item %q is missing Value", item.Name)
@@ -154,6 +178,8 @@ func populateSTKPushCallbackMetadata(callback *stkPushCallback, result *STKPushC
 		}
 	}
 
+	// Metadata may be absent or partial on a valid unsuccessful outcome. Only
+	// a successful payment requires all fields promised by the result type.
 	if *callback.ResultCode != 0 {
 		return nil
 	}
@@ -195,6 +221,8 @@ func parseSTKPushCallbackString(data json.RawMessage, name string) (string, erro
 }
 
 func parseSTKPushCallbackPhoneNumber(data json.RawMessage) (string, error) {
+	// Accept the quoted representation first because it preserves the value
+	// exactly and is the natural representation for an identifier.
 	var phoneNumber string
 	if err := json.Unmarshal(data, &phoneNumber); err == nil {
 		if strings.TrimSpace(phoneNumber) == "" {
@@ -204,6 +232,8 @@ func parseSTKPushCallbackPhoneNumber(data json.RawMessage) (string, error) {
 		return phoneNumber, nil
 	}
 
+	// Daraja commonly sends PhoneNumber as an unquoted integer. json.Number
+	// avoids converting it through float64 before normalizing it to text.
 	var number json.Number
 	if err := json.Unmarshal(data, &number); err != nil {
 		return "", errors.New("metadata item \"PhoneNumber\" must be a number or string")
