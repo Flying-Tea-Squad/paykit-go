@@ -16,49 +16,49 @@ type STKPushRequest struct {
 }
 
 type STKPushResponse struct {
-	MerchantRequestID string `json:"MerchantRequestID"`
-	CheckoutRequestID string `json:"CheckoutRequestID"`
-	ResponseCode      string `json:"ResponseCode"`
+	MerchantRequestID   string `json:"MerchantRequestID"`
+	CheckoutRequestID   string `json:"CheckoutRequestID"`
+	ResponseCode        string `json:"ResponseCode"`
 	ResponseDescription string `json:"ResponseDescription"`
-	CustomerMessage   string `json:"CustomerMessage"`
+	CustomerMessage     string `json:"CustomerMessage"`
 }
 
 type C2BRegisterRequest struct {
-	IdempotencyKey string `json:"-"`
-	ShortCode string `json:"ShortCode"`
-	ResponseType string `json:"ResponseType"`
+	IdempotencyKey  string `json:"-"`
+	ShortCode       string `json:"ShortCode"`
+	ResponseType    string `json:"ResponseType"`
 	ConfirmationURL string `json:"ConfirmationURL"`
-	ValidationURL string `json:"ValidationURL"`
+	ValidationURL   string `json:"ValidationURL"`
 }
 
 type CB2SimulateRequest struct {
 	IdempotencyKey string `json:"-"`
-	ShortCode string `json:"ShortCode"`
-	CommandID string `json:"CommandID"`
-	Amount int `json:"Amount"`
-	Msisdn string `json:"Msisdn"`
-	BillRefNumber string `json:"BillRefNumber"`
+	ShortCode      string `json:"ShortCode"`
+	CommandID      string `json:"CommandID"`
+	Amount         int    `json:"Amount"`
+	Msisdn         string `json:"Msisdn"`
+	BillRefNumber  string `json:"BillRefNumber"`
 }
 
 type B2CRequest struct {
-	IdempotencyKey string `json:"-"`
-	InitiatorName string `json:"InitiatorName"`
+	IdempotencyKey     string `json:"-"`
+	InitiatorName      string `json:"InitiatorName"`
 	SecurityCredential string `json:"SecurityCredential"`
-	CommandID string `json:"CommandID"`
-	Amount int `json:"Amount"`
-	PartyA string `json:"PartyA"`
-	PartyB string `json:"PartyB"`
-	Remarks string `json:"Remarks"`
-	QueueTimeOutURL string `json:"QueueTimeOutURL"`
-	ResultURL string `json:"ResultURL"`
-	Occasion string `json:"Occasion,omitempty"`
+	CommandID          string `json:"CommandID"`
+	Amount             int    `json:"Amount"`
+	PartyA             string `json:"PartyA"`
+	PartyB             string `json:"PartyB"`
+	Remarks            string `json:"Remarks"`
+	QueueTimeOutURL    string `json:"QueueTimeOutURL"`
+	ResultURL          string `json:"ResultURL"`
+	Occasion           string `json:"Occasion,omitempty"`
 }
 
 type B2CResponse struct {
-	ConversationID string `json:"ConversationID"`
+	ConversationID           string `json:"ConversationID"`
 	OriginatorConversationID string `json:"OriginatorConversationID"`
-	ResponseCode string `json:"ResponseCode"`
-	ResponseDescription string `json:"ResponseDescription"`
+	ResponseCode             string `json:"ResponseCode"`
+	ResponseDescription      string `json:"ResponseDescription"`
 }
 
 type StatusRequest struct {
@@ -88,8 +88,8 @@ type BalanceRequest struct {
 	IdempotencyKey     string `json:"-"`
 	Initiator          string `json:"Initiator"`
 	SecurityCredential string `json:"SecurityCredential"`
-	CommandID          string `json:"CommandID"` // Must be set to "AccountBalance"
-	PartyA             string `json:"PartyA"`    // The short code of the organization
+	CommandID          string `json:"CommandID"`      // Must be set to "AccountBalance"
+	PartyA             string `json:"PartyA"`         // The short code of the organization
 	IdentifierType     string `json:"IdentifierType"` // Typically "4" for short codes
 	Remarks            string `json:"Remarks"`
 	QueueTimeOutURL    string `json:"QueueTimeOutURL"`

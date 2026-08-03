@@ -16,7 +16,6 @@ type VoidRequest struct {
 	IdempotencyKey string
 }
 
-
 type RefundRequest struct {
 	IdempotencyKey string
 }
