@@ -8,14 +8,14 @@ import (
 
 func TestAccountBalanceSerialization(t *testing.T) {
 	req := BalanceRequest{
-		IdempotencyKey:     "balance-key-999",
-		Initiator:          "testapiuser",
-		CommandID:          "AccountBalance",
-		PartyA:             "600000",
-		IdentifierType:     "4",
-		Remarks:            "reconciliation check",
-		QueueTimeOutURL:    "http://myservice:8080/queuetimeouturl",
-		ResultURL:          "http://myservice:8080/result",
+		IdempotencyKey:  "balance-key-999",
+		Initiator:       "testapiuser",
+		CommandID:       "AccountBalance",
+		PartyA:          "600000",
+		IdentifierType:  "4",
+		Remarks:         "reconciliation check",
+		QueueTimeOutURL: "http://myservice:8080/queuetimeouturl",
+		ResultURL:       "http://myservice:8080/result",
 	}
 
 	data, err := json.Marshal(req)
