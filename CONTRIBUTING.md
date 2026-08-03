@@ -41,27 +41,29 @@ Branch naming examples:
 
 Ensure you have [Mise](https://mise.jdx.dev/getting-started.html) and Git installed. You do not need to install Go or the project's development tools separately.
 
-Review and trust the repository's Mise configuration, then install the toolchain:
+Review and trust the repository's Mise configuration, then set up the development environment:
 
 ```bash
 mise trust
-mise install
+mise run setup
 ```
 
-The SDK supports Go 1.22.2 and later. Mise installs the latest Go 1.25 patch for development because the pinned versions of `goimports` and `golangci-lint` require Go 1.25 to build. Compatibility tasks automatically use the latest Go 1.22 patch and disable automatic toolchain upgrades, so changes are still compiled and tested against the SDK's minimum supported Go release.
+The minimum supported Go version is declared in `go.mod`. Development tool versions are declared in `mise.toml` and resolve to the latest compatible patch releases. Compatibility tasks disable automatic Go toolchain upgrades so changes are still compiled and tested against the SDK's declared minimum release.
 
 Mise provides the following development tasks:
 
 | Task | Description |
 |---|---|
-| `mise run build` | Build all packages with Go 1.22. |
-| `mise run test` | Test all packages with Go 1.22. |
-| `mise run vet` | Run `go vet` with Go 1.22. |
+| `mise run setup` | Install development tools, compatibility toolchains, and module dependencies. |
+| `mise run build` | Build all packages with the minimum supported Go version. |
+| `mise run test` | Test all packages with the minimum supported Go version. |
+| `mise run test-dev` | Test all packages with the development Go version. |
+| `mise run vet` | Run `go vet` with the minimum supported Go version. |
 | `mise run format-check` | Check formatting and imports without changing files. |
 | `mise run format` | Format Go files and organize imports with `goimports`. |
 | `mise run lint-check` | Check the code with `golangci-lint`. |
 | `mise run lint` | Apply fixes supported by `golangci-lint`. |
-| `mise run ci` | Run all build, test, vet, formatting, and lint checks. |
+| `mise run ci` | Run all build, compatibility and development tests, vet, formatting, and lint checks. |
 
 Run the complete local CI suite before opening a pull request:
 
@@ -70,12 +72,6 @@ mise run ci
 ```
 
 Mise automatically activates and installs task-specific tools when running these commands, so shell activation is optional. If you want the configured `go`, `goimports`, and `golangci-lint` commands available directly in your shell, follow Mise's shell activation instructions.
-
-When changing module dependencies, tidy the module explicitly:
-
-```bash
-go mod tidy
-```
 
 ## Project Structure
 
@@ -134,10 +130,7 @@ chore: initialize project structure
 Before opening a Pull Request, make sure:
 
 - Your branch is up to date with `main`.
-- `mise run ci` passes.
-- Your code is formatted with `goimports`.
-- The code builds and tests pass with the minimum supported Go version.
-- `go vet` and `golangci-lint` report no issues.
+- `mise run ci` passes; it covers builds, tests, vet, formatting, and lint checks.
 - New functionality includes tests where appropriate.
 - Documentation has been updated if necessary.
 

@@ -4,8 +4,11 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  test:
+  checks:
     runs-on: ubuntu-latest
 
     steps:
@@ -14,18 +17,8 @@ jobs:
 
       - name: Set up development tools
         uses: jdx/mise-action@v4
+        with:
+          cache: true
 
-      - name: Build
-        run: mise run build
-
-      - name: Run tests
-        run: mise run test
-
-      - name: Run go vet
-        run: mise run vet
-
-      - name: Check formatting
-        run: mise run format-check
-
-      - name: Run linter
-        run: mise run lint-check
+      - name: Run CI checks
+        run: mise run ci
