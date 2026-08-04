@@ -1,6 +1,6 @@
 ## Summary
 
-<!-- What does this PR change? -->
+<!-- Overview of what this PR focuses on -->
 
 ### Type of change
 
@@ -11,7 +11,11 @@
 
 ### Related issue
 
-Closes #
+Closes #N
+
+### Details
+
+<!-- Provide in depth overview of what changed --->
 
 ## Testing
 
