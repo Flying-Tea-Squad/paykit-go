@@ -1,0 +1,68 @@
+[tools]
+go = "1.25"
+golangci-lint = "2.12"
+"go:golang.org/x/tools/cmd/goimports" = { version = "v0.48", depends = "go" }
+
+[tasks.setup]
+description = "Install all development and compatibility toolchains"
+run = """
+mise install
+mise install go@1.22
+go mod download
+"""
+
+[tasks.build]
+description = "Build all packages with the minimum supported Go version"
+tools.go = "1.22"
+env.GOTOOLCHAIN = "local"
+run = "go build ./..."
+
+[tasks.test]
+description = "Test all packages with the minimum supported Go version"
+tools.go = "1.22"
+env.GOTOOLCHAIN = "local"
+run = "go test ./..."
+
+[tasks.vet]
+description = "Vet all packages with the minimum supported Go version"
+tools.go = "1.22"
+env.GOTOOLCHAIN = "local"
+run = "go vet ./..."
+
+[tasks.test-dev]
+description = "Test all packages with the development Go version"
+run = "go test ./..."
+
+[tasks.format-check]
+description = "Check Go formatting and imports"
+run = '''
+files="$(goimports -l .)"
+if [ -n "$files" ]; then
+  echo "The following files need formatting:"
+  echo "$files"
+  exit 1
+fi
+'''
+
+[tasks.format]
+description = "Format Go source files and imports"
+run = "goimports -w ."
+
+[tasks.lint-check]
+description = "Check the code with golangci-lint"
+run = "golangci-lint run ./..."
+
+[tasks.lint]
+description = "Apply fixes supported by golangci-lint"
+run = "golangci-lint run --fix ./..."
+
+[tasks.ci]
+description = "Run all continuous integration checks"
+depends = [
+  "build",
+  "test",
+  "test-dev",
+  "vet",
+  "format-check",
+  "lint-check",
+]

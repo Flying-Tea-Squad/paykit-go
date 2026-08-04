@@ -4,26 +4,21 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  test:
+  checks:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Set up development tools
+        uses: jdx/mise-action@v4
         with:
-          go-version-file: go.mod
+          cache: true
 
-      - name: Run tests
-        run: go test ./...
-        
-      - name: Run go vet
-        run: go vet ./...
-
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v8
-        with:
-          version: v2.1.6
+      - name: Run CI checks
+        run: mise run ci
