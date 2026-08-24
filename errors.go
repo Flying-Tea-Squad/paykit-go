@@ -53,9 +53,19 @@ var gatewayErrorMap = map[string]map[string]string{
 // MapGatewayErrorCode translates a provider-specific error code into a
 // standardized PayKit error code. If the code is unknown, it returns
 // ErrProcessingError.
-func MapGatewayErrorCode(code string) string {
-	if standardized, ok := gatewayErrorMap[code]; ok {
-		return standardized
+func MapGatewayErrorCode(provider, code string) string {
+	// First check the provider-specific namespace
+	if providerMap, ok := gatewayErrorMap[provider]; ok {
+		if standardized, ok := providerMap[code]; ok {
+			return standardized
+		}
+	}
+
+	// Fallback to the default generic namespace
+	if defaultMap, ok := gatewayErrorMap["default"]; ok {
+		if standardized, ok := defaultMap[code]; ok {
+			return standardized
+		}
 	}
 
 	return ErrProcessingError
