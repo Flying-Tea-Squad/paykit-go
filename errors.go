@@ -32,19 +32,22 @@ var (
 	ErrTimeoutSentinel           = errors.New(ErrTimeout)
 )
 
-// gatewayErrorMap maps provider-specific error codes to standardized PayKit codes.
-var gatewayErrorMap = map[string]string{
-	// M-Pesa examples
-	"1032": ErrCardDeclined,
-	"2001": ErrInvalidNumber,
-	"1025": ErrTimeout,
-
-	// Generic provider examples
-	"INVALID_PHONE":      ErrInvalidNumber,
-	"INSUFFICIENT_FUNDS": ErrInsufficientFunds,
-	"AUTH_FAILED":        ErrAuthFailed,
-	"DUPLICATE":          ErrDuplicate,
-	"TIMEOUT":            ErrTimeout,
+// gatewayErrorMap maps provider-specific error codes to standardized PayKit codes
+// by provider namespace.
+var gatewayErrorMap = map[string]map[string]string{
+	"mpesa": {
+		"1032": ErrCardDeclined,
+		"2001": ErrInvalidNumber,
+		"1025": ErrTimeout,
+	},
+	"default": {
+		// Generic provider examples
+		"INVALID_PHONE":      ErrInvalidNumber,
+		"INSUFFICIENT_FUNDS": ErrInsufficientFunds,
+		"AUTH_FAILED":        ErrAuthFailed,
+		"DUPLICATE":          ErrDuplicate,
+		"TIMEOUT":            ErrTimeout,
+	},
 }
 
 // MapGatewayErrorCode translates a provider-specific error code into a
