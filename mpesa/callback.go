@@ -30,9 +30,10 @@ type STKPushCallbackResult struct {
 	Amount int
 	// TransactionID is Daraja's MpesaReceiptNumber under an SDK-friendly name.
 	TransactionID string
-	// ReferenceData preserves every CallbackMetadata item, including values
-	// the SDK does not recognize yet, so new provider fields are not lost.
-	ReferenceData map[string]any
+	// ReferenceData preserves the raw JSON values of every CallbackMetadata
+	// item, allowing callers to unmarshal provider fields according to their
+	// own types.
+	ReferenceData map[string]json.RawMessage
 }
 
 type stkPushCallbackEnvelope struct {
@@ -127,7 +128,7 @@ func populateSTKPushCallbackMetadata(callback *stkPushCallback, result *STKPushC
 		return nil
 	}
 
-	result.ReferenceData = make(map[string]any, len(callback.CallbackMetadata.Items))
+	result.ReferenceData = make(map[string]json.RawMessage, len(callback.CallbackMetadata.Items))
 	seen := make(map[string]struct{}, len(callback.CallbackMetadata.Items))
 	var hasAmount, hasTransactionID, hasMsisdn bool
 
@@ -142,16 +143,13 @@ func populateSTKPushCallbackMetadata(callback *stkPushCallback, result *STKPushC
 		}
 		seen[item.Name] = struct{}{}
 
-		// Preserve known and unknown values before extracting the typed fields.
-		// This makes the parser forward-compatible with additional Daraja items.
-		var referenceValue any
+		// Preserve raw JSON values so callers can unmarshal into their own
+		// types. This makes the parser forward-compatible with additional
+		// Daraja items.
 		if len(item.Value) == 0 {
 			return fmt.Errorf("metadata item %q is missing Value", item.Name)
 		}
-		if err := json.Unmarshal(item.Value, &referenceValue); err != nil {
-			return fmt.Errorf("metadata item %q has invalid Value: %w", item.Name, err)
-		}
-		result.ReferenceData[item.Name] = referenceValue
+		result.ReferenceData[item.Name] = bytes.Clone(item.Value)
 
 		switch item.Name {
 		case "Amount":

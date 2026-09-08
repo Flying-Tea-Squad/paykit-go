@@ -1,6 +1,7 @@
 package mpesa
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -41,11 +42,11 @@ func TestParseSTKPushCallback(t *testing.T) {
 				Msisdn:            "254700000000",
 				Amount:            500,
 				TransactionID:     "ABC123XYZ",
-				ReferenceData: map[string]any{
-					"Amount":             float64(500),
-					"MpesaReceiptNumber": "ABC123XYZ",
-					"TransactionDate":    float64(20260802140530),
-					"PhoneNumber":        float64(254700000000),
+				ReferenceData: map[string]json.RawMessage{
+					"Amount":             json.RawMessage("500"),
+					"MpesaReceiptNumber": json.RawMessage(`"ABC123XYZ"`),
+					"TransactionDate":    json.RawMessage("20260802140530"),
+					"PhoneNumber":        json.RawMessage("254700000000"),
 				},
 			},
 		},
@@ -95,10 +96,10 @@ func TestParseSTKPushCallback(t *testing.T) {
 				Msisdn:            "254711111111",
 				Amount:            75,
 				TransactionID:     "ORDER123",
-				ReferenceData: map[string]any{
-					"PhoneNumber":        float64(254711111111),
-					"MpesaReceiptNumber": "ORDER123",
-					"Amount":             float64(75),
+				ReferenceData: map[string]json.RawMessage{
+					"PhoneNumber":        json.RawMessage("254711111111"),
+					"MpesaReceiptNumber": json.RawMessage(`"ORDER123"`),
+					"Amount":             json.RawMessage("75"),
 				},
 			},
 		},
@@ -130,11 +131,11 @@ func TestParseSTKPushCallback(t *testing.T) {
 				Msisdn:            "254722222222",
 				Amount:            120,
 				TransactionID:     "UNKNOWN1",
-				ReferenceData: map[string]any{
-					"Amount":             float64(120),
-					"MpesaReceiptNumber": "UNKNOWN1",
-					"PhoneNumber":        float64(254722222222),
-					"FutureField":        "future-value",
+				ReferenceData: map[string]json.RawMessage{
+					"Amount":             json.RawMessage("120"),
+					"MpesaReceiptNumber": json.RawMessage(`"UNKNOWN1"`),
+					"PhoneNumber":        json.RawMessage("254722222222"),
+					"FutureField":        json.RawMessage(`"future-value"`),
 				},
 			},
 		},
@@ -165,10 +166,10 @@ func TestParseSTKPushCallback(t *testing.T) {
 				Msisdn:            "254733333333",
 				Amount:            10,
 				TransactionID:     "STRING1",
-				ReferenceData: map[string]any{
-					"Amount":             float64(10),
-					"MpesaReceiptNumber": "STRING1",
-					"PhoneNumber":        "254733333333",
+				ReferenceData: map[string]json.RawMessage{
+					"Amount":             json.RawMessage("10"),
+					"MpesaReceiptNumber": json.RawMessage(`"STRING1"`),
+					"PhoneNumber":        json.RawMessage(`"254733333333"`),
 				},
 			},
 		},
@@ -533,9 +534,9 @@ func TestParseSTKPushCallbackUnsuccessfulOutcomes(t *testing.T) {
 				ResultCode:        1032,
 				ResultDesc:        "test result",
 				Amount:            25,
-				ReferenceData: map[string]any{
-					"Amount":      float64(25),
-					"FutureField": true,
+				ReferenceData: map[string]json.RawMessage{
+					"Amount":      json.RawMessage("25"),
+					"FutureField": json.RawMessage("true"),
 				},
 			},
 		},
