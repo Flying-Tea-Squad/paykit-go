@@ -12,6 +12,9 @@ import (
 
 // STKPushCallbackResult represents the final outcome Safaricom sends to an
 // application's callback URL after processing an STK Push request.
+//
+// Successful callbacks (ResultCode == 0) will always have all the named fields
+// filled out.
 type STKPushCallbackResult struct {
 	// MerchantRequestID and CheckoutRequestID correlate this asynchronous
 	// result with the STK Push request that the application sent earlier.
@@ -63,6 +66,9 @@ type stkPushCallbackItem struct {
 }
 
 // ParseSTKPushCallback parses a Safaricom STK Push callback payload.
+//
+// Successful callbacks (ResultCode == 0) will always have all the named fields
+// filled out.
 func ParseSTKPushCallback(data []byte) (*STKPushCallbackResult, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return nil, errors.New("mpesa: parse STK Push callback: empty payload")
