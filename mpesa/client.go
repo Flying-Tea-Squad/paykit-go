@@ -19,8 +19,8 @@ type AccessTokenProvider interface {
 
 // Client sends requests to the M-Pesa API.
 type Client struct {
-	baseURL string
-	paykit.HTTPClient
+	baseURL      string
+	httpClient   *paykit.HTTPClient
 	passkey      string
 	tokenManager AccessTokenProvider
 }
@@ -28,17 +28,17 @@ type Client struct {
 // NewMpesaClient creates an M-Pesa API client.
 func NewMpesaClient(
 	baseURL string,
-	httpClient paykit.HTTPClient,
+	httpClient *paykit.HTTPClient,
 	passkey string,
 	tokenManager AccessTokenProvider,
 ) *Client {
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = paykit.NewHTTPClient(paykit.HTTPClientConfig{})
 	}
 
 	return &Client{
 		baseURL:      baseURL,
-		HTTPClient:   httpClient,
+		httpClient:   httpClient,
 		passkey:      passkey,
 		tokenManager: tokenManager,
 	}
@@ -84,7 +84,7 @@ func (c *Client) STKPush(ctx context.Context, req STKPushRequest) (*STKPushRespo
 
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.Do(httpReq)
+	resp, err := c.httpClient.Do(ctx, httpReq)
 	if err != nil {
 		return nil, err
 	}

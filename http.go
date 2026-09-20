@@ -16,11 +16,6 @@ import (
 	"time"
 )
 
-// HTTPClient executes HTTP requests for payment provider clients.
-type HTTPClient interface {
-	Do(req *http.Request) (*http.Response, error)
-}
-
 const (
 	defaultConnectionTimeout = 10 * time.Second
 	defaultRequestTimeout    = 30 * time.Second
@@ -89,6 +84,13 @@ func NewHTTPClient(config HTTPClientConfig) *HTTPClient {
 		maxAttempts:    maxAttempts,
 		retryBaseDelay: retryBaseDelay,
 	}
+}
+
+// SetTransport replaces the underlying HTTP transport. This is intended for
+// testing, where a test server's transport (carrying its TLS certificates)
+// must be injected after construction.
+func (c *HTTPClient) SetTransport(rt http.RoundTripper) {
+	c.client.Transport = rt
 }
 
 // Do sends req with ctx and returns the final HTTP response.
@@ -294,7 +296,6 @@ func sleepFor(ctx context.Context, d time.Duration) error {
 	}
 }
 
-
 func (c *HTTPClient) logDebug(message string, args ...any) {
 	if c.logger != nil {
 		c.logger.Debug(message, args...)
@@ -330,3 +331,4 @@ func (c *HTTPClient) dumpResponse(resp *http.Response) {
 	_, _ = c.dumpWriter.Write(dump)
 	_, _ = c.dumpWriter.Write([]byte("\n"))
 
+}
