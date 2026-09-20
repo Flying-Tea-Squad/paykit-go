@@ -16,6 +16,11 @@ import (
 	"time"
 )
 
+// HTTPClient executes HTTP requests for payment provider clients.
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
 const (
 	defaultConnectionTimeout = 10 * time.Second
 	defaultRequestTimeout    = 30 * time.Second
@@ -324,4 +329,4 @@ func (c *HTTPClient) dumpResponse(resp *http.Response) {
 
 	_, _ = c.dumpWriter.Write(dump)
 	_, _ = c.dumpWriter.Write([]byte("\n"))
-}
+

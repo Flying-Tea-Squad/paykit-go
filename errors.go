@@ -4,56 +4,56 @@ import "errors"
 
 // Standardized error codes returned by PayKit.
 const (
-    ErrIncorrectNumber   = "incorrect_number"
-    ErrInvalidNumber     = "invalid_number"
-    ErrInvalidExpiryDate = "invalid_expiry_date"
-    ErrInvalidCVC        = "invalid_cvc"
-    ErrExpiredCard       = "expired_card"
-    ErrCardDeclined      = "card_declined"
-    ErrProcessingError   = "processing_error"
-    ErrDuplicate         = "duplicate_transaction"
-    ErrAuthFailed        = "authentication_failed"
-    ErrInsufficientFunds = "insufficient_funds"
-    ErrTimeout           = "request_timeout"
+	ErrIncorrectNumber   = "incorrect_number"
+	ErrInvalidNumber     = "invalid_number"
+	ErrInvalidExpiryDate = "invalid_expiry_date"
+	ErrInvalidCVC        = "invalid_cvc"
+	ErrExpiredCard       = "expired_card"
+	ErrCardDeclined      = "card_declined"
+	ErrProcessingError   = "processing_error"
+	ErrDuplicate         = "duplicate_transaction"
+	ErrAuthFailed        = "authentication_failed"
+	ErrInsufficientFunds = "insufficient_funds"
+	ErrTimeout           = "request_timeout"
 )
 
 // Sentinel errors for programmatic error checks.
 var (
-    ErrIncorrectNumberSentinel   = errors.New(ErrIncorrectNumber)
-    ErrInvalidNumberSentinel     = errors.New(ErrInvalidNumber)
-    ErrInvalidExpiryDateSentinel = errors.New(ErrInvalidExpiryDate)
-    ErrInvalidCVCSentinel        = errors.New(ErrInvalidCVC)
-    ErrExpiredCardSentinel       = errors.New(ErrExpiredCard)
-    ErrCardDeclinedSentinel      = errors.New(ErrCardDeclined)
-    ErrProcessingErrorSentinel   = errors.New(ErrProcessingError)
-    ErrDuplicateSentinel         = errors.New(ErrDuplicate)
-    ErrAuthFailedSentinel        = errors.New(ErrAuthFailed)
-    ErrInsufficientFundsSentinel = errors.New(ErrInsufficientFunds)
-    ErrTimeoutSentinel           = errors.New(ErrTimeout)
+	ErrIncorrectNumberSentinel   = errors.New(ErrIncorrectNumber)
+	ErrInvalidNumberSentinel     = errors.New(ErrInvalidNumber)
+	ErrInvalidExpiryDateSentinel = errors.New(ErrInvalidExpiryDate)
+	ErrInvalidCVCSentinel        = errors.New(ErrInvalidCVC)
+	ErrExpiredCardSentinel       = errors.New(ErrExpiredCard)
+	ErrCardDeclinedSentinel      = errors.New(ErrCardDeclined)
+	ErrProcessingErrorSentinel   = errors.New(ErrProcessingError)
+	ErrDuplicateSentinel         = errors.New(ErrDuplicate)
+	ErrAuthFailedSentinel        = errors.New(ErrAuthFailed)
+	ErrInsufficientFundsSentinel = errors.New(ErrInsufficientFunds)
+	ErrTimeoutSentinel           = errors.New(ErrTimeout)
 )
 
 // gatewayErrorMap maps provider-specific error codes to standardized PayKit codes.
 var gatewayErrorMap = map[string]string{
-    // M-Pesa examples
-    "1032": ErrCardDeclined,
-    "2001": ErrInvalidNumber,
-    "1025": ErrTimeout,
+	// M-Pesa examples
+	"1032": ErrCardDeclined,
+	"2001": ErrInvalidNumber,
+	"1025": ErrTimeout,
 
-    // Generic provider examples
-    "INVALID_PHONE":    ErrInvalidNumber,
-    "INSUFFICIENT_FUNDS": ErrInsufficientFunds,
-    "AUTH_FAILED":      ErrAuthFailed,
-    "DUPLICATE":        ErrDuplicate,
-    "TIMEOUT":          ErrTimeout,
+	// Generic provider examples
+	"INVALID_PHONE":      ErrInvalidNumber,
+	"INSUFFICIENT_FUNDS": ErrInsufficientFunds,
+	"AUTH_FAILED":        ErrAuthFailed,
+	"DUPLICATE":          ErrDuplicate,
+	"TIMEOUT":            ErrTimeout,
 }
 
 // MapGatewayErrorCode translates a provider-specific error code into a
 // standardized PayKit error code. If the code is unknown, it returns
 // ErrProcessingError.
 func MapGatewayErrorCode(code string) string {
-    if standardized, ok := gatewayErrorMap[code]; ok {
-        return standardized
-    }
+	if standardized, ok := gatewayErrorMap[code]; ok {
+		return standardized
+	}
 
-    return ErrProcessingError
+	return ErrProcessingError
 }
