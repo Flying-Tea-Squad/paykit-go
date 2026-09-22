@@ -12,6 +12,11 @@ This project is currently under development.
 * Pesapal
 * Bogus provider for local testing
 
+## Architecture
+
+PayKit-Go utilizes a capability-based interface architecture tailored for African payment rails (STK Push, USSD push prompts, and B2C disbursements). For complete architectural context and design decisions, see:
+* [ADR 0001: Capability-Based Interface Architecture](docs/adr/0001-capability-based-architecture.md)
+
 ## Development
 
 Run all tests:

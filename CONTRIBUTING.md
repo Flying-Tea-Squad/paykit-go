@@ -87,7 +87,8 @@ paykit-go/
 └── docs/             # Project documentation
 ```
 
-Each provider should be self-contained and implement the shared gateway interfaces defined by the root package.
+Each provider should be self-contained and implement the shared capability interfaces defined by the root package (`Gateway`, `Disburser`, `WebhookHandler`, `BalanceChecker`).
+Refer to [ADR 0001: Capability-Based Interface Architecture](docs/adr/0001-capability-based-architecture.md) for detailed rationale, capability composition patterns, and provider contracts.
 
 ## Coding Guidelines
 
