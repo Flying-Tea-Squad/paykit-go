@@ -28,7 +28,6 @@ func import_gateway(t *testing.T) {
 	}
 }
 
-
 // newClient returns a zero-value Client ready for use in tests.
 func newClient(t *testing.T) *Client {
 	t.Helper()

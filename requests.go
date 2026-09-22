@@ -1,6 +1,6 @@
 package paykit
 
-// PurchaseRequest represents a direct charge / payment request.
+// PurchaseRequest encapsulates data for a standard purchase transaction.
 type PurchaseRequest struct {
 	Amount         int
 	Currency       string
@@ -11,7 +11,7 @@ type PurchaseRequest struct {
 	Metadata       map[string]string
 }
 
-// AuthorizeRequest holds-but-does-not-capture funds.
+// AuthorizeRequest encapsulates data for placing a hold on funds without capturing.
 type AuthorizeRequest struct {
 	Amount         int
 	Currency       string
@@ -22,32 +22,28 @@ type AuthorizeRequest struct {
 	Metadata       map[string]string
 }
 
-// CaptureRequest captures a previously authorized amount.
+// CaptureRequest provides data needed to capture a previously authorized transaction.
 type CaptureRequest struct {
 	TransactionID  string
 	Amount         int
 	IdempotencyKey string
-	Metadata       map[string]string
 }
 
-// VoidRequest cancels a previously authorized transaction.
+// VoidRequest provides data needed to cancel a prior authorization.
 type VoidRequest struct {
 	TransactionID  string
 	IdempotencyKey string
-	Metadata       map[string]string
 }
 
-// RefundRequest reverses a completed transaction.
+// RefundRequest encapsulates data to reverse a completed capture or purchase.
 type RefundRequest struct {
 	TransactionID  string
 	Amount         int
 	IdempotencyKey string
-	Metadata       map[string]string
 }
 
-// StatusRequest queries the status of a transaction.
+// StatusRequest provides data needed to query the current state of a transaction.
 type StatusRequest struct {
 	TransactionID  string
 	IdempotencyKey string
-	Metadata       map[string]string
 }

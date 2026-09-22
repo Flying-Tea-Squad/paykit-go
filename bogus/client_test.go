@@ -22,21 +22,21 @@ func TestClient_Purchase(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
-		amount    int
-		wantOK    bool
-		wantErr   error
-		wantCode  string
+		name     string
+		amount   int
+		wantOK   bool
+		wantErr  error
+		wantCode string
 	}{
 		{
-			name:    "ends in 00 — success",
-			amount:  1000,
-			wantOK:  true,
+			name:   "ends in 00 — success",
+			amount: 1000,
+			wantOK: true,
 		},
 		{
-			name:    "exactly 0 — success",
-			amount:  0,
-			wantOK:  true,
+			name:   "exactly 0 — success",
+			amount: 0,
+			wantOK: true,
 		},
 		{
 			name:     "ends in 05 — card declined",

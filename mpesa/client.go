@@ -3,11 +3,9 @@ package mpesa
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/Flying-Tea-Squad/paykit-go"
 )
@@ -104,14 +102,4 @@ func (c *Client) STKPush(ctx context.Context, req STKPushRequest) (*STKPushRespo
 	}
 
 	return &stkResp, nil
-}
-
-func generateTimestamp() string {
-	return time.Now().Format("20060102150405")
-}
-
-func generatePassword(shortcode, passkey, timeStamp string) string {
-	raw := shortcode + passkey + timeStamp
-
-	return base64.StdEncoding.EncodeToString([]byte(raw))
 }
