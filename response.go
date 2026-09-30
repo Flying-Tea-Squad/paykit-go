@@ -147,7 +147,7 @@ type Event struct {
 	Timestamp time.Time `json:"timestamp,omitempty"`
 
 	// Raw contains the unparsed incoming callback body for auditing.
-	Raw []byte `json:"raw,omitempty"`
+	Raw json.RawMessage `json:"raw,omitempty"`
 
 	// Metadata holds provider-specific webhook fields.
 	Metadata map[string]any `json:"metadata,omitempty"`

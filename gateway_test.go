@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -83,6 +84,10 @@ func (m *mockFullGateway) ParseAndVerify(r *http.Request) (*paykit.Event, error)
 	if r.Header.Get("X-Signature") != "valid_token" {
 		return nil, errors.New("invalid webhook signature")
 	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
 	return &paykit.Event{
 		ID:            "evt_001",
 		Provider:      m.name,
@@ -91,6 +96,7 @@ func (m *mockFullGateway) ParseAndVerify(r *http.Request) (*paykit.Event, error)
 		Amount:        1000,
 		Currency:      "KES",
 		Timestamp:     time.Now().UTC(),
+		Raw:           json.RawMessage(body),
 	}, nil
 }
 
@@ -203,7 +209,7 @@ func TestGatewayCapabilities(t *testing.T) {
 	})
 
 	t.Run("WebhookHandler Capability Detection", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(`{}`))
+		req := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(`{"status":"success"}`))
 		req.Header.Set("X-Signature", "valid_token")
 
 		handler, ok := any(fullGw).(paykit.WebhookHandler)
@@ -217,6 +223,16 @@ func TestGatewayCapabilities(t *testing.T) {
 		}
 		if evt.Type != "charge.completed" || evt.Amount != 1000 {
 			t.Errorf("unexpected event: %+v", evt)
+		}
+		if string(evt.Raw) != `{"status":"success"}` {
+			t.Errorf("expected Event.Raw to contain payload, got: %s", string(evt.Raw))
+		}
+
+		// Verify that ParseAndVerify reads and consumes r.Body
+		buf := make([]byte, 10)
+		n, readErr := req.Body.Read(buf)
+		if n != 0 || readErr != io.EOF {
+			t.Errorf("expected req.Body to be fully consumed (0 bytes, io.EOF), got n=%d, err=%v", n, readErr)
 		}
 
 		// Invalid signature check
@@ -293,6 +309,39 @@ func TestGatewayCapabilities(t *testing.T) {
 
 		if decoded.Amount != req.Amount || decoded.Phone != req.Phone || decoded.Reference != req.Reference {
 			t.Errorf("mismatched decoded charge request: %+v", decoded)
+		}
+
+		// Verify Event JSON serialization with json.RawMessage (native inlining vs base64)
+		rawPayload := `{"result_code":0,"checkout_id":"ws_123"}`
+		evt := paykit.Event{
+			ID:            "evt_999",
+			Provider:      "mpesa",
+			Type:          "charge.completed",
+			TransactionID: "txn_456",
+			Reference:     "REF-001",
+			Amount:        2000,
+			Currency:      "KES",
+			Phone:         "+254700000000",
+			Timestamp:     time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC),
+			Raw:           json.RawMessage(rawPayload),
+		}
+
+		evtData, err := json.Marshal(evt)
+		if err != nil {
+			t.Fatalf("failed to marshal Event: %v", err)
+		}
+
+		evtJSON := string(evtData)
+		if !strings.Contains(evtJSON, `"raw":{"result_code":0,"checkout_id":"ws_123"}`) {
+			t.Errorf("expected raw JSON embedded directly, got: %s", evtJSON)
+		}
+
+		var decodedEvt paykit.Event
+		if err := json.Unmarshal(evtData, &decodedEvt); err != nil {
+			t.Fatalf("failed to unmarshal Event: %v", err)
+		}
+		if string(decodedEvt.Raw) != rawPayload {
+			t.Errorf("expected Raw %s, got %s", rawPayload, string(decodedEvt.Raw))
 		}
 	})
 }

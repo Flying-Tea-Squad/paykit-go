@@ -43,6 +43,10 @@ type Disburser interface {
 type WebhookHandler interface {
 	// ParseAndVerify validates request authenticity (e.g., HMAC/RSA signatures, IP whitelists)
 	// and deserializes the payload into a normalized Event.
+	//
+	// Note: ParseAndVerify reads and consumes the entire request body (r.Body). Callers that
+	// need to inspect or process the payload again after verification should rely on the returned
+	// Event.Raw or buffer r.Body before calling ParseAndVerify.
 	ParseAndVerify(r *http.Request) (*Event, error)
 }
 
