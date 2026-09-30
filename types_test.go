@@ -284,8 +284,8 @@ func TestParseTransactionStatus(t *testing.T) {
 		{"timed_out alias", "timed_out", StatusTimeout},
 		{"case insensitive", "SUCCESS", StatusSuccess},
 		{"with whitespace", "  pending  ", StatusPendingAction},
-		{"unknown defaults to failed", "unknown_status", StatusFailed},
-		{"empty defaults to failed", "", StatusFailed},
+		{"unknown defaults to unknown", "unknown_status", StatusUnknown},
+		{"empty defaults to unknown", "", StatusUnknown},
 	}
 
 	for _, tt := range tests {

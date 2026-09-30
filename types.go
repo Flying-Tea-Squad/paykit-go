@@ -136,6 +136,9 @@ const (
 	StatusCancelled TransactionStatus = "cancelled"
 	// StatusTimeout means the transaction timed out waiting for user action or provider response.
 	StatusTimeout TransactionStatus = "timeout"
+	// StatusUnknown means the transaction state is not recognized.
+	// Used as a safe default for unrecognized provider statuses (non-terminal).
+	StatusUnknown TransactionStatus = "unknown"
 )
 
 // IsTerminal returns true if the status is a final state (no further transitions expected).
@@ -154,7 +157,7 @@ func (s TransactionStatus) String() string {
 }
 
 // ParseTransactionStatus parses a string into a TransactionStatus.
-// Returns StatusFailed for unknown values (safe default).
+// Returns StatusUnknown for unrecognized values (non-terminal safe default).
 func ParseTransactionStatus(s string) TransactionStatus {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "pending_action", "pending":
@@ -170,6 +173,6 @@ func ParseTransactionStatus(s string) TransactionStatus {
 	case "timeout", "timed_out":
 		return StatusTimeout
 	default:
-		return StatusFailed
+		return StatusUnknown
 	}
 }
