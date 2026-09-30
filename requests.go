@@ -1,6 +1,57 @@
 package paykit
 
-// PurchaseRequest encapsulates data for a standard purchase transaction.
+// ChargeRequest initiates a customer payment collection (e.g., STK Push, USSD push, hosted checkout).
+type ChargeRequest struct {
+	// Amount is the transaction amount in minor units (cents).
+	Amount Money
+	// Phone is the customer's phone number in E.164 format (e.g., 2547XXXXXXXX).
+	Phone string
+	// Description is a human-readable description of the charge.
+	Description string
+	// IdempotencyKey is a unique key to prevent duplicate charges.
+	IdempotencyKey string
+	// CallbackURL is the URL to receive asynchronous payment notifications.
+	CallbackURL string
+	// Metadata stores additional provider-specific information.
+	Metadata map[string]string
+}
+
+// DisbursementRequest initiates a business-to-customer (B2C) payout.
+type DisbursementRequest struct {
+	// Amount is the payout amount in minor units (cents).
+	Amount Money
+	// Phone is the recipient's phone number in E.164 format (e.g., 2547XXXXXXXX).
+	Phone string
+	// Description is a human-readable description of the disbursement.
+	Description string
+	// IdempotencyKey is a unique key to prevent duplicate disbursements.
+	IdempotencyKey string
+	// CallbackURL is the URL to receive asynchronous payout notifications.
+	CallbackURL string
+	// Metadata stores additional provider-specific information.
+	Metadata map[string]string
+}
+
+// StatusRequest queries the current state of a transaction.
+type StatusRequest struct {
+	// TransactionID is the provider's transaction identifier.
+	TransactionID string
+	// IdempotencyKey is an optional key for idempotent status queries.
+	IdempotencyKey string
+}
+
+// RefundRequest initiates a full or partial refund/reversal of a completed charge.
+type RefundRequest struct {
+	// TransactionID is the provider's transaction identifier of the original charge.
+	TransactionID string
+	// Amount is the refund amount in minor units. Zero or omitted means full refund.
+	Amount Money
+	// IdempotencyKey is a unique key to prevent duplicate refunds.
+	IdempotencyKey string
+}
+
+// Deprecated: PurchaseRequest is deprecated. Use ChargeRequest instead.
+// Kept for backward compatibility with the legacy Gateway interface.
 type PurchaseRequest struct {
 	Amount         int
 	Currency       string
@@ -11,7 +62,8 @@ type PurchaseRequest struct {
 	Metadata       map[string]string
 }
 
-// AuthorizeRequest encapsulates data for placing a hold on funds without capturing.
+// Deprecated: AuthorizeRequest is deprecated. Use ChargeRequest instead.
+// Kept for backward compatibility with the legacy Gateway interface.
 type AuthorizeRequest struct {
 	Amount         int
 	Currency       string
@@ -22,28 +74,17 @@ type AuthorizeRequest struct {
 	Metadata       map[string]string
 }
 
-// CaptureRequest provides data needed to capture a previously authorized transaction.
+// Deprecated: CaptureRequest is deprecated. Not applicable to mobile money rails.
+// Kept for backward compatibility with the legacy Gateway interface.
 type CaptureRequest struct {
 	TransactionID  string
 	Amount         int
 	IdempotencyKey string
 }
 
-// VoidRequest provides data needed to cancel a prior authorization.
+// Deprecated: VoidRequest is deprecated. Not applicable to mobile money rails.
+// Kept for backward compatibility with the legacy Gateway interface.
 type VoidRequest struct {
-	TransactionID  string
-	IdempotencyKey string
-}
-
-// RefundRequest encapsulates data to reverse a completed capture or purchase.
-type RefundRequest struct {
-	TransactionID  string
-	Amount         int
-	IdempotencyKey string
-}
-
-// StatusRequest provides data needed to query the current state of a transaction.
-type StatusRequest struct {
 	TransactionID  string
 	IdempotencyKey string
 }
