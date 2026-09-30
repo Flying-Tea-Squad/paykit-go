@@ -17,9 +17,11 @@ type AccessTokenProvider interface {
 
 // Client sends requests to the M-Pesa API.
 type Client struct {
-	baseURL      string
-	httpClient   *paykit.HTTPClient
-	passkey      string
+	baseURL string
+	// httpClient is held as an unexported pointer rather than embedded to encapsulate transport
+	// methods, avoid copying internal mutexes, and share connection pools with token managers.
+	httpClient *paykit.HTTPClient
+	passkey string
 	tokenManager AccessTokenProvider
 }
 
