@@ -41,11 +41,11 @@ type BalanceChecker interface {
 
 // Event represents a parsed webhook event.
 type Event struct {
-	Type      string
+	Type          string
 	TransactionID string
-	Status    TransactionStatus
-	Amount    Money
-	Raw       map[string]any
+	Status        TransactionStatus
+	Amount        Money
+	Raw           map[string]any
 }
 
 // BalanceRequest queries account balance.
@@ -55,7 +55,7 @@ type BalanceRequest struct {
 
 // BalanceResponse represents balance inquiry result.
 type BalanceResponse struct {
-	LedgerBalance   Money
+	LedgerBalance    Money
 	AvailableBalance Money
-	Raw             map[string]any
+	Raw              map[string]any
 }
