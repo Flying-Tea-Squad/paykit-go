@@ -4,17 +4,17 @@ import "errors"
 
 // Standardized error codes returned by PayKit.
 const (
-	ErrIncorrectNumber   = "incorrect_number"
-	ErrInvalidNumber     = "invalid_number"
-	ErrInvalidExpiryDate = "invalid_expiry_date"
-	ErrInvalidCVC        = "invalid_cvc"
-	ErrExpiredCard       = "expired_card"
-	ErrCardDeclined      = "card_declined"
-	ErrProcessingError   = "processing_error"
-	ErrDuplicate         = "duplicate_transaction"
-	ErrAuthFailed        = "authentication_failed"
-	ErrInsufficientFunds = "insufficient_funds"
-	ErrTimeout           = "request_timeout"
+	ErrIncorrectNumber       = "incorrect_number"
+	ErrInvalidNumber         = "invalid_number"
+	ErrInvalidExpiryDate     = "invalid_expiry_date"
+	ErrInvalidCVC            = "invalid_cvc"
+	ErrExpiredCard           = "expired_card"
+	ErrCardDeclined          = "card_declined"
+	ErrProcessingError       = "processing_error"
+	ErrDuplicate             = "duplicate_transaction"
+	ErrAuthFailed            = "authentication_failed"
+	ErrInsufficientFunds     = "insufficient_funds"
+	ErrTimeout               = "request_timeout"
 	ErrMissingIdempotencyKey = "missing_idempotency_key"
 )
 

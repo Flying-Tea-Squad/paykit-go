@@ -383,13 +383,14 @@ func (c *HTTPClient) dumpRequest(req *http.Request) {
 	if c.dumpWriter == nil {
 		return
 	}
+	c.dumpMu.Lock()
+	defer c.dumpMu.Unlock()
+
 	dump, err := httputil.DumpRequestOut(req, true)
 	if err != nil {
 		c.logDebug("failed to dump http request", "error", err)
 		return
 	}
-	c.dumpMu.Lock()
-	defer c.dumpMu.Unlock()
 	_, _ = c.dumpWriter.Write(dump)
 	_, _ = c.dumpWriter.Write([]byte("\n"))
 }
@@ -398,13 +399,14 @@ func (c *HTTPClient) dumpResponse(resp *http.Response) {
 	if c.dumpWriter == nil {
 		return
 	}
+	c.dumpMu.Lock()
+	defer c.dumpMu.Unlock()
+
 	dump, err := httputil.DumpResponse(resp, true)
 	if err != nil {
 		c.logDebug("failed to dump http response", "error", err)
 		return
 	}
-	c.dumpMu.Lock()
-	defer c.dumpMu.Unlock()
 	_, _ = c.dumpWriter.Write(dump)
 	_, _ = c.dumpWriter.Write([]byte("\n"))
 }

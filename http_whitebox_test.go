@@ -111,13 +111,6 @@ func TestDumpWriter_RaceSafety(t *testing.T) {
 		dumpWriter: &buf,
 	}
 
-	req, _ := http.NewRequest(http.MethodGet, "https://example.com/test", nil)
-	resp := &http.Response{
-		StatusCode: http.StatusOK,
-		Header:     make(http.Header),
-		Body:       http.NoBody,
-	}
-
 	var wg sync.WaitGroup
 	goroutines := 50
 
@@ -125,10 +118,16 @@ func TestDumpWriter_RaceSafety(t *testing.T) {
 	for i := 0; i < goroutines; i++ {
 		go func() {
 			defer wg.Done()
+			req, _ := http.NewRequest(http.MethodGet, "https://example.com/test", nil)
 			client.dumpRequest(req)
 		}()
 		go func() {
 			defer wg.Done()
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       http.NoBody,
+			}
 			client.dumpResponse(resp)
 		}()
 	}
