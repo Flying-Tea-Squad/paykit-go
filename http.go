@@ -76,11 +76,9 @@ type HTTPClientConfig struct {
 
 // HTTPClient executes HTTP requests for payment provider clients with production-ready defaults,
 // automated exponential backoff retries, and centralized idempotency policy enforcement.
-//
-// Provider implementations should hold *HTTPClient as a pointer field rather than embedding
-// it to avoid method promotion (preventing raw transport calls from leaking into domain APIs),
-// protect internal mutex state from accidental copying, and share connection pools across services.
 type HTTPClient struct {
+	// Provider implementations hold *HTTPClient as a pointer field rather than embedding
+	// to avoid method promotion, prevent mutex copying, and share connection pools across services.
 	client            *http.Client
 	logger            *slog.Logger
 	dumpWriter        io.Writer
