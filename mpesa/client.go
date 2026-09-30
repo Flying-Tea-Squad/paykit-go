@@ -20,8 +20,8 @@ type Client struct {
 	baseURL string
 	// httpClient is held as an unexported pointer rather than embedded to encapsulate transport
 	// methods, avoid copying internal mutexes, and share connection pools with token managers.
-	httpClient *paykit.HTTPClient
-	passkey string
+	httpClient   *paykit.HTTPClient
+	passkey      string
 	tokenManager AccessTokenProvider
 }
 
