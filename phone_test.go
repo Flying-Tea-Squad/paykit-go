@@ -1,10 +1,12 @@
-package paykit
+package paykit_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/Flying-Tea-Squad/paykit-go"
 )
 
 func TestFormatKenyanPhone(t *testing.T) {
@@ -99,7 +101,7 @@ func TestFormatKenyanPhone(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := FormatKenyanPhone(tt.input)
+			result, err := paykit.FormatKenyanPhone(tt.input)
 			if tt.wantErr {
 				assert.Error(t, err)
 				assert.Equal(t, "", result)
@@ -132,7 +134,7 @@ func TestIsValidKenyanPhone(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.expected, IsValidKenyanPhone(tt.input))
+			assert.Equal(t, tt.expected, paykit.IsValidKenyanPhone(tt.input))
 		})
 	}
 }
@@ -153,7 +155,7 @@ func TestFormatKenyanPhone_RoundTrip(t *testing.T) {
 
 	for _, format := range formats {
 		t.Run(format, func(t *testing.T) {
-			result, err := FormatKenyanPhone(format)
+			result, err := paykit.FormatKenyanPhone(format)
 			require.NoError(t, err)
 			assert.Equal(t, original, result)
 		})
