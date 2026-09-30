@@ -97,7 +97,8 @@ Refer to [ADR 0001: Capability-Based Interface Architecture](docs/adr/0001-capab
 - Keep functions small and focused.
 - Avoid unnecessary abstractions.
 - Prefer composition over inheritance.
-- Add comments for exported types and functions.
+- Document exported types, interfaces, functions, methods, and constants with conventional Godoc comments explaining their purpose and consumer usage.
+- Document caller-facing side effects explicitly in Godoc comments (e.g. consuming or mutating an `io.Reader` such as `r.Body`, acquiring locks, modifying inputs, or mutating persistent state).
 
 ## Testing
 
