@@ -92,24 +92,41 @@ Refer to [ADR 0001: Capability-Based Interface Architecture](docs/adr/0001-capab
 
 ## Coding Guidelines
 
-- Format Go code and imports with `mise run format`.
+- Format Go code and imports with `mise run format` (or `goimports`).
 - Write clear, idiomatic Go code.
 - Keep functions small and focused.
 - Avoid unnecessary abstractions.
 - Prefer composition over inheritance.
-- Add comments for exported types and functions.
+
+### Package Design & Naming
+- **Shallow Nesting**: Avoid deep package hierarchies (e.g. avoid `internal/transport/http/client/v1`). Keep the package layout shallow, clean, and flat (maximum 1–2 levels deep).
+- **Idiomatic Naming**: Use short, lowercase, single-word package names (`paykit`, `mpesa`, `airtelmoney`, `pesapal`, `gateway`). Never use underscores, dashes, or mixedCaps in package names.
+- **No Stutter**: Avoid redundant names where the package name repeats the enclosing directory or type (e.g., avoid `transport.TransportClient` or `client.ClientConfig`).
+
+### Cross-Package Exported Symbol Documentation
+- **Purpose & Intent**: Every exported type, interface, function, method, and package-level constant must be documented with conventional Godoc comments.
+- **Consumer-Centric Focus**: Godoc comments must clearly explain **when** to use the symbol and **how** to use it without exposing or coupling consumers to its inner workings. The intent of each exported symbol is to expose a specific public capability or piece of data.
+- **Implementation Comments**: Internal mechanics, algorithmic choices, and implementation details must be documented using regular internal comments (`// ...`) within function bodies or unexported symbols, never in public Godoc comments.
 
 ## Testing
 
-Every new feature or bug fix should include tests whenever practical.
+Every logical contribution to the project must include comprehensive tests.
+
+### Testing Hierarchy: Blackbox vs. Whitebox
+- **Blackbox Tests (`package <pkg>_test`)**:
+  - Focus on verifying business logic, public API contracts, and integration flows from the consumer's perspective.
+  - Must remain immune to internal implementation changes.
+  - Blackbox tests are long-lived; any failure indicates a breaking change in core behavior that must be explicitly accounted for and documented.
+- **Whitebox Tests (`package <pkg>`)**:
+  - Focus on testing internal implementation edge cases, nil/zero-value defenses, unexported helper functions, and specific error-mapping paths that the implementation may fall prey to.
 
 Run all tests before submitting a pull request:
 
 ```bash
-mise run test
+mise run test # or go test -v -race ./...
 ```
 
-Fixtures for provider responses should be placed inside each provider's `fixtures/` directory.
+Fixtures for provider responses should be placed inside each provider's `fixtures/` directory. Fixtures must be deterministic, fictional, centralized, resettable, and compliant with API contracts (zero production data, zero PII, and zero secrets).
 
 ## Commit Messages
 
