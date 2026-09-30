@@ -33,6 +33,12 @@ func TestFormatKenyanPhone(t *testing.T) {
 		{"+2541 full E.164", "+254100000001", "254100000001", false},
 		{"+2547 with spaces", " +254700000001 ", "254700000001", false},
 
+		// Valid formatted with delimiters (spaces, hyphens, dots)
+		{"with hyphens", "0700-000-001", "254700000001", false},
+		{"with spaces", "0712 345 678", "254712345678", false},
+		{"with dots", "0712.345.678", "254712345678", false},
+		{"with mixed delimiters", "07-00.000 001", "254700000001", false},
+
 		// All valid Safaricom prefixes (70-79)
 		{"70 prefix", "0700000001", "254700000001", false},
 		{"71 prefix", "0710000001", "254710000001", false},
@@ -74,7 +80,6 @@ func TestFormatKenyanPhone(t *testing.T) {
 
 		// Invalid: non-numeric
 		{"letters", "0700abc001", "", true},
-		{"special chars", "0700-000-001", "", true},
 		{"plus in middle", "07+0000001", "", true},
 
 		// Invalid: empty/whitespace
@@ -116,6 +121,9 @@ func TestIsValidKenyanPhone(t *testing.T) {
 		{"valid 01", "0100000001", true},
 		{"valid 2547", "254700000001", true},
 		{"valid +2547", "+254700000001", true},
+		{"valid with hyphens", "0700-000-001", true},
+		{"valid with spaces", "0712 345 678", true},
+		{"valid with dots", "0712.345.678", true},
 		{"invalid prefix", "0200000001", false},
 		{"invalid length", "070000001", false},
 		{"empty", "", false},
@@ -139,6 +147,8 @@ func TestFormatKenyanPhone_RoundTrip(t *testing.T) {
 		"+254700000001",
 		" 0700000001 ",
 		" +254700000001 ",
+		"0700-000-001",
+		"07-00.000 001",
 	}
 
 	for _, format := range formats {

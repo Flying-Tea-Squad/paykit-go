@@ -10,8 +10,8 @@ var (
 	// ErrInvalidPhoneNumber is returned when a phone number cannot be parsed or normalized.
 	ErrInvalidPhoneNumber = errors.New("invalid phone number")
 
-	// kenyanMobilePrefixes are the valid mobile network prefixes in Kenya.
-	// 7xx = Safaricom, 1xx = Airtel/Telkom, 0xx = legacy/other
+	// kenyanMobilePrefixes contains valid 2-digit national mobile network
+	// prefixes in Kenya (07x and 01x ranges allocated by CAK).
 	kenyanMobilePrefixes = map[string]bool{
 		"70": true, "71": true, "72": true, "73": true, "74": true,
 		"75": true, "76": true, "77": true, "78": true, "79": true,
@@ -35,11 +35,14 @@ var (
 //   - 2541XXXXXXXX (E.164 without +)
 //   - +2547XXXXXXXX (full E.164)
 //   - +2541XXXXXXXX (full E.164)
+//   - Formatted with spaces, hyphens, or dots (e.g., "0700-000-001", "0712 345 678")
 //
 // Returns the normalized 12-digit E.164 string (e.g., "254700000001").
 // Returns ErrInvalidPhoneNumber for invalid prefixes, wrong length, or non-Kenyan numbers.
 func FormatKenyanPhone(phone string) (string, error) {
-	cleaned := strings.TrimSpace(phone)
+	// Strip common formatting delimiters (spaces, hyphens, dots) before validation.
+	cleaned := strings.NewReplacer(" ", "", "-", "", ".", "").Replace(phone)
+	cleaned = strings.TrimSpace(cleaned)
 	if cleaned == "" {
 		return "", ErrInvalidPhoneNumber
 	}
