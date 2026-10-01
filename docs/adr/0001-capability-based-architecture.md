@@ -177,6 +177,23 @@ var (
    gw, err := paykit.Get("mpesa", cfg)
    ```
 
+### 4. Transport Layer & Centralized Idempotency Guarantee
+
+In African mobile money and banking infrastructure, duplicate transaction prevention is paramount. Networks frequently encounter transient timeouts, packet drops, or delayed acknowledgments. Without strict deduplication, network retries can trigger double debits or duplicate payouts.
+
+To eliminate repetitive and error-prone inline header injection across provider drivers, idempotency handling is centralized within the shared transport layer (`paykit.HTTPClient`):
+
+1. **Centralized Header Injection & Policies**:
+   - `HTTPClient` intercepts all mutating HTTP operations (`POST`, `PUT`, `PATCH`, `DELETE`).
+   - Configurable `IdempotencyPolicy` options govern missing keys:
+     - `IdempotencyPolicyRequire` (Default): Rejects mutating requests lacking an `Idempotency-Key` header with `ErrMissingIdempotencyKeySentinel`, enforcing financial safety by design.
+     - `IdempotencyPolicyAutoGenerate`: Automatically injects a cryptographically secure UUIDv4 token using `crypto/rand` when the header is absent.
+     - `IdempotencyPolicyOptional`: Passes mutating requests without a key, but marks the request as non-retryable.
+2. **Safe Automated Retries**:
+   - While idempotent queries (`GET`, `HEAD`, `OPTIONS`) can be retried automatically on 5xx or transient connection drops, mutating requests are **only** eligible for exponential backoff retries when an `Idempotency-Key` header is present. If no key is present, the transport layer sends the request exactly once and fails immediately upon network or server errors.
+3. **Cryptographically Secure Entropy**:
+   - Automatic key generation uses standard library `crypto/rand` to generate RFC 4122 compliant Version 4 UUIDs, requiring zero external dependencies.
+
 ---
 
 ## Architectural Interaction Diagram

@@ -38,7 +38,7 @@ func TestSTKPushUsesCorrectendpoint(t *testing.T) {
 
 	client := &Client{
 		baseURL:      server.URL,
-		HTTPClient:   server.Client(),
+		httpClient:   testHTTPClient(server.Client()),
 		tokenManager: fakeTokenProvider{},
 	}
 
@@ -85,7 +85,7 @@ func TestSTKPushParsesSuccessResponse(t *testing.T) {
 
 	client := &Client{
 		baseURL:      server.URL,
-		HTTPClient:   server.Client(),
+		httpClient:   testHTTPClient(server.Client()),
 		tokenManager: fakeTokenProvider{},
 	}
 
@@ -144,7 +144,7 @@ func TestSTKPushIncludesIdempotencyHeader(t *testing.T) {
 
 	client := &Client{
 		baseURL:      server.URL,
-		HTTPClient:   server.Client(),
+		httpClient:   testHTTPClient(server.Client()),
 		tokenManager: fakeTokenProvider{},
 	}
 
@@ -198,7 +198,7 @@ func TestSTKPushGeneratesTimestampPassword(t *testing.T) {
 
 	client := &Client{
 		baseURL:      server.URL,
-		HTTPClient:   server.Client(),
+		httpClient:   testHTTPClient(server.Client()),
 		passkey:      passkey,
 		tokenManager: fakeTokenProvider{},
 	}
@@ -254,7 +254,7 @@ func TestSTKPushReturnsErrorForNon2xxResponse(t *testing.T) {
 
 			client := &Client{
 				baseURL:      server.URL,
-				HTTPClient:   server.Client(),
+				httpClient:   testHTTPClient(server.Client()),
 				tokenManager: fakeTokenProvider{},
 			}
 
