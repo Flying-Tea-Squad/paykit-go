@@ -362,7 +362,7 @@ func TestHTTPClientNoBodyRetries(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode != http.StatusOK || attempts.Load() != 2 {
 				t.Fatalf("status = %d, attempts = %d; want 200 and 2", resp.StatusCode, attempts.Load())
 			}
@@ -423,7 +423,7 @@ func TestHTTPClientInitialBodyLifecycle(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			if resp.StatusCode != http.StatusOK {
 				t.Fatalf("status = %d", resp.StatusCode)
 			}
@@ -466,7 +466,7 @@ func TestHTTPClientConcurrentDumpWriter(t *testing.T) {
 				t.Error(err)
 				return
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }()
 			body, err := io.ReadAll(resp.Body)
 			if err != nil || string(body) != "response-payload" {
 				t.Errorf("body = %q, error = %v", body, err)
