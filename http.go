@@ -13,6 +13,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -29,6 +30,7 @@ type HTTPClient struct {
 	client         *http.Client
 	logger         *slog.Logger
 	dumpWriter     io.Writer
+	dumpMu         sync.Mutex
 	maxAttempts    int
 	retryBaseDelay time.Duration
 }
@@ -122,13 +124,14 @@ func (c *HTTPClient) Do(ctx context.Context, req *http.Request) (*http.Response,
 	// and bytes.Buffer. For any other body type callers must set it themselves.
 	// When the method is non-idempotent (canRetry == false) the body is sent
 	// exactly once, so GetBody is not needed.
-	if canRetry && attempts > 1 && req.Body != nil && req.GetBody == nil {
+	hasBody := req.Body != nil && req.Body != http.NoBody
+	if canRetry && attempts > 1 && hasBody && req.GetBody == nil {
 		return nil, errors.New("paykit: request body cannot be replayed; set req.GetBody or use a single-attempt client")
 	}
 
 	var lastErr error
 	for attempt := 1; attempt <= attempts; attempt++ {
-		attemptReq, err := cloneRequestForAttempt(ctx, req)
+		attemptReq, err := cloneRequestForAttempt(ctx, req, attempt)
 		if err != nil {
 			return nil, err
 		}
@@ -203,9 +206,9 @@ func (c *HTTPClient) Do(ctx context.Context, req *http.Request) (*http.Response,
 	return nil, lastErr
 }
 
-func cloneRequestForAttempt(ctx context.Context, req *http.Request) (*http.Request, error) {
+func cloneRequestForAttempt(ctx context.Context, req *http.Request, attempt int) (*http.Request, error) {
 	attemptReq := req.Clone(ctx)
-	if req.GetBody != nil {
+	if attempt > 1 && req.GetBody != nil {
 		body, err := req.GetBody()
 		if err != nil {
 			return nil, fmt.Errorf("paykit: clone request body: %w", err)
@@ -313,8 +316,7 @@ func (c *HTTPClient) dumpRequest(req *http.Request) {
 		return
 	}
 
-	_, _ = c.dumpWriter.Write(dump)
-	_, _ = c.dumpWriter.Write([]byte("\n"))
+	c.writeDump(dump)
 }
 
 func (c *HTTPClient) dumpResponse(resp *http.Response) {
@@ -328,7 +330,12 @@ func (c *HTTPClient) dumpResponse(resp *http.Response) {
 		return
 	}
 
+	c.writeDump(dump)
+}
+
+func (c *HTTPClient) writeDump(dump []byte) {
+	c.dumpMu.Lock()
+	defer c.dumpMu.Unlock()
 	_, _ = c.dumpWriter.Write(dump)
 	_, _ = c.dumpWriter.Write([]byte("\n"))
-
 }

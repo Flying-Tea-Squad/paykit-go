@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -336,5 +337,147 @@ func TestHTTPClientContextCancelledNotRetried(t *testing.T) {
 	}
 	if attempts.Load() != 0 {
 		t.Fatalf("expected 0 server attempts with canceled context, got %d", attempts.Load())
+	}
+}
+
+func TestHTTPClientNoBodyRetries(t *testing.T) {
+	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodDelete, http.MethodPost} {
+		t.Run(method, func(t *testing.T) {
+			var attempts atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if attempts.Add(1) == 1 {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+			req, err := http.NewRequest(method, server.URL, http.NoBody)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Idempotency-Key", "empty-body")
+			client := NewHTTPClient(HTTPClientConfig{RetryBaseDelay: time.Nanosecond})
+			resp, err := client.Do(context.Background(), req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK || attempts.Load() != 2 {
+				t.Fatalf("status = %d, attempts = %d; want 200 and 2", resp.StatusCode, attempts.Load())
+			}
+		})
+	}
+}
+
+type trackedRequestBody struct {
+	io.Reader
+	closed atomic.Bool
+}
+
+func (b *trackedRequestBody) Close() error {
+	b.closed.Store(true)
+	return nil
+}
+
+func TestHTTPClientInitialBodyLifecycle(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		maxAttempts int
+		retry       bool
+	}{
+		{"single attempt", 1, false},
+		{"first attempt succeeds", 3, false},
+		{"retry replays body", 3, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var attempts atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, err := io.ReadAll(r.Body)
+				if err != nil || string(body) != "payload" {
+					t.Errorf("body = %q, error = %v", body, err)
+				}
+				if attempts.Add(1) == 1 && tc.retry {
+					w.WriteHeader(http.StatusServiceUnavailable)
+					return
+				}
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+			original := &trackedRequestBody{Reader: strings.NewReader("payload")}
+			req, err := http.NewRequest(http.MethodPost, server.URL, original)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Header.Set("Idempotency-Key", "body-lifecycle")
+			getBodyCalls := 0
+			req.GetBody = func() (io.ReadCloser, error) {
+				getBodyCalls++
+				if !tc.retry {
+					return nil, errors.New("GetBody must not run on the initial attempt")
+				}
+				return io.NopCloser(strings.NewReader("payload")), nil
+			}
+			client := NewHTTPClient(HTTPClientConfig{MaxAttempts: tc.maxAttempts, RetryBaseDelay: time.Nanosecond})
+			resp, err := client.Do(context.Background(), req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status = %d", resp.StatusCode)
+			}
+			wantCalls := 0
+			if tc.retry {
+				wantCalls = 1
+			}
+			if getBodyCalls != wantCalls {
+				t.Errorf("GetBody calls = %d, want %d", getBodyCalls, wantCalls)
+			}
+			if !original.closed.Load() {
+				t.Error("original request body was not closed")
+			}
+		})
+	}
+}
+
+func TestHTTPClientConcurrentDumpWriter(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, "response-payload")
+	}))
+	defer server.Close()
+	var dump bytes.Buffer
+	client := NewHTTPClient(HTTPClientConfig{DumpWriter: &dump})
+	const requests = 20
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < requests; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			req, err := http.NewRequest(http.MethodPost, server.URL, strings.NewReader("request-payload"))
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			resp, err := client.Do(context.Background(), req)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			defer resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			if err != nil || string(body) != "response-payload" {
+				t.Errorf("body = %q, error = %v", body, err)
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	for _, marker := range []string{"POST / HTTP/1.1", "HTTP/1.1 200 OK", "request-payload", "response-payload"} {
+		if got := strings.Count(dump.String(), marker); got != requests {
+			t.Errorf("dump contains %d copies of %q, want %d", got, marker, requests)
+		}
 	}
 }
