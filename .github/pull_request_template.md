@@ -15,7 +15,12 @@ Closes #N
 
 ### Details
 
-<!-- Provide in depth overview of what changed --->
+<!--
+Provide an overview of the changes. For each change or feature added, answer:
+- What changed / got added? (Describe the component, function, or behavior)
+- How did it change? (Describe the technical implementation, architecture, mechanics)
+- Why did it change? (Describe the motivation, context, and problem solved)
+-->
 
 ## Testing
 
