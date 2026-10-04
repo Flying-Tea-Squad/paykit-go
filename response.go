@@ -5,9 +5,9 @@ import (
 	"time"
 )
 
-// ChargeResponse represents the outcome of a Charge operation.
+// ChargeResponse represents the result of a charge initiation.
 type ChargeResponse struct {
-	// Success indicates whether the charge was accepted or processed successfully.
+	// Success indicates whether the charge was initiated or processed successfully.
 	Success bool `json:"success"`
 
 	// Message contains human-readable status information or provider error descriptions.
@@ -16,8 +16,11 @@ type ChargeResponse struct {
 	// TransactionID is the provider's unique transaction identifier.
 	TransactionID string `json:"transaction_id,omitempty"`
 
-	// Status indicates normalized or provider state (e.g. "pending", "completed", "failed").
-	Status string `json:"status,omitempty"`
+	// CheckoutRequestID is the provider-specific checkout reference (e.g., M-Pesa CheckoutRequestID).
+	CheckoutRequestID string `json:"checkout_request_id,omitempty"`
+
+	// Status indicates the current normalized transaction status.
+	Status TransactionStatus `json:"status,omitempty"`
 
 	// Raw holds the original raw provider payload for auditing and troubleshooting.
 	Raw json.RawMessage `json:"raw,omitempty"`
@@ -26,7 +29,7 @@ type ChargeResponse struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-// DisbursementResponse represents the outcome of a Disburse operation.
+// DisbursementResponse represents the result of a disbursement initiation.
 type DisbursementResponse struct {
 	// Success indicates whether the payout was accepted or processed successfully.
 	Success bool `json:"success"`
@@ -37,8 +40,8 @@ type DisbursementResponse struct {
 	// TransactionID is the provider's payout transaction reference.
 	TransactionID string `json:"transaction_id,omitempty"`
 
-	// Status indicates transaction state (e.g. "pending", "completed", "failed").
-	Status string `json:"status,omitempty"`
+	// Status indicates the current transaction status.
+	Status TransactionStatus `json:"status,omitempty"`
 
 	// Raw contains the unparsed provider response.
 	Raw json.RawMessage `json:"raw,omitempty"`
@@ -47,7 +50,7 @@ type DisbursementResponse struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-// StatusResponse represents the result of a QueryStatus operation.
+// StatusResponse represents the result of a transaction status query.
 type StatusResponse struct {
 	// Success indicates whether the status query itself completed successfully.
 	Success bool `json:"success"`
@@ -59,7 +62,10 @@ type StatusResponse struct {
 	TransactionID string `json:"transaction_id,omitempty"`
 
 	// Status is the normalized transaction state.
-	Status string `json:"status,omitempty"`
+	Status TransactionStatus `json:"status,omitempty"`
+
+	// Amount is the actual settled amount (may differ from requested).
+	Amount Money `json:"amount,omitempty"`
 
 	// Raw contains the complete unparsed provider response.
 	Raw json.RawMessage `json:"raw,omitempty"`
@@ -68,9 +74,9 @@ type StatusResponse struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-// RefundResponse represents the result of a Refund operation.
+// RefundResponse represents the result of a refund initiation.
 type RefundResponse struct {
-	// Success indicates whether the reversal was initiated or completed successfully.
+	// Success indicates whether the refund/reversal was initiated successfully.
 	Success bool `json:"success"`
 
 	// Message provides human-readable feedback.
@@ -82,8 +88,8 @@ type RefundResponse struct {
 	// TransactionID is the original transaction reference being refunded.
 	TransactionID string `json:"transaction_id,omitempty"`
 
-	// Status reflects the refund state.
-	Status string `json:"status,omitempty"`
+	// Status reflects the refund status.
+	Status TransactionStatus `json:"status,omitempty"`
 
 	// Raw contains the provider's raw refund payload.
 	Raw json.RawMessage `json:"raw,omitempty"`
@@ -100,14 +106,11 @@ type BalanceResponse struct {
 	// Message provides human-readable feedback.
 	Message string `json:"message,omitempty"`
 
-	// Currency is the ISO 4217 currency code for the balance.
-	Currency string `json:"currency,omitempty"`
+	// LedgerBalance represents the total ledger balance.
+	LedgerBalance Money `json:"ledger_balance"`
 
-	// Balance represents the total ledger balance in minor units.
-	Balance int `json:"balance"`
-
-	// Available represents the immediately usable funds in minor units.
-	Available int `json:"available,omitempty"`
+	// AvailableBalance represents the immediately usable funds.
+	AvailableBalance Money `json:"available_balance,omitempty"`
 
 	// Raw contains the provider's raw balance payload.
 	Raw json.RawMessage `json:"raw,omitempty"`
@@ -134,11 +137,11 @@ type Event struct {
 	// Reference is the merchant's tracking or account reference.
 	Reference string `json:"reference,omitempty"`
 
-	// Amount is the transferred sum in minor currency units.
-	Amount int `json:"amount,omitempty"`
+	// Status is the normalized transaction status.
+	Status TransactionStatus `json:"status,omitempty"`
 
-	// Currency is the ISO 4217 currency code.
-	Currency string `json:"currency,omitempty"`
+	// Amount is the transferred sum as Money.
+	Amount Money `json:"amount,omitempty"`
 
 	// Phone is the customer or recipient MSISDN in E.164.
 	Phone string `json:"phone,omitempty"`

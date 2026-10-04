@@ -3,13 +3,10 @@ package paykit
 // ChargeRequest encapsulates parameters required to initiate a customer payment collection
 // (e.g. SIM Toolkit STK Push, USSD prompt, or hosted order checkout).
 type ChargeRequest struct {
-	// Amount is the payment sum in the smallest fractional currency unit (e.g., Kenyan cents).
-	Amount int `json:"amount"`
+	// Amount is the transaction amount in minor units with currency.
+	Amount Money `json:"amount"`
 
-	// Currency is the standard three-letter ISO 4217 currency code (e.g. "KES", "UGX", "USD").
-	Currency string `json:"currency"`
-
-	// Phone is the customer MSISDN formatted in E.164 (e.g. "+254712345678").
+	// Phone is the customer's phone number in E.164 format (e.g., "+254712345678" or "2547XXXXXXXX").
 	Phone string `json:"phone,omitempty"`
 
 	// Description is a human-readable memo or statement descriptor for the charge.
@@ -31,11 +28,8 @@ type ChargeRequest struct {
 // DisbursementRequest encapsulates parameters required to disburse funds to a recipient
 // (e.g. B2C mobile money payout, salary distribution, or vendor payment).
 type DisbursementRequest struct {
-	// Amount is the disbursement sum in minor currency units.
-	Amount int `json:"amount"`
-
-	// Currency is the standard three-letter ISO 4217 currency code (e.g. "KES").
-	Currency string `json:"currency"`
+	// Amount is the disbursement sum in minor currency units with currency.
+	Amount Money `json:"amount"`
 
 	// Phone is the recipient MSISDN formatted in E.164.
 	Phone string `json:"phone,omitempty"`
@@ -79,11 +73,8 @@ type RefundRequest struct {
 	// TransactionID is the provider's original transaction identifier to refund.
 	TransactionID string `json:"transaction_id"`
 
-	// Amount is the amount to refund in minor units (omit or 0 for full refund where supported).
-	Amount int `json:"amount,omitempty"`
-
-	// Currency is the standard three-letter ISO 4217 currency code.
-	Currency string `json:"currency,omitempty"`
+	// Amount is the refund amount. Zero or omitted means full refund where supported.
+	Amount Money `json:"amount,omitempty"`
 
 	// Reason details why the refund is being initiated.
 	Reason string `json:"reason,omitempty"`
@@ -100,14 +91,16 @@ type BalanceRequest struct {
 	// Currency optionally limits the balance check to a specific currency ledger.
 	Currency string `json:"currency,omitempty"`
 
+	// IdempotencyKey prevents duplicate balance queries.
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+
 	// Metadata holds provider-specific parameters.
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 // Deprecated: PurchaseRequest is deprecated. Use ChargeRequest instead.
 type PurchaseRequest struct {
-	Amount         int
-	Currency       string
+	Amount         Money
 	Phone          string
 	Description    string
 	IdempotencyKey string
@@ -117,8 +110,7 @@ type PurchaseRequest struct {
 
 // Deprecated: AuthorizeRequest is deprecated. African mobile money rails do not support two-phase authorizations.
 type AuthorizeRequest struct {
-	Amount         int
-	Currency       string
+	Amount         Money
 	Phone          string
 	Description    string
 	IdempotencyKey string
@@ -129,7 +121,7 @@ type AuthorizeRequest struct {
 // Deprecated: CaptureRequest is deprecated. African mobile money rails do not support two-phase authorizations.
 type CaptureRequest struct {
 	TransactionID  string
-	Amount         int
+	Amount         Money
 	IdempotencyKey string
 }
 

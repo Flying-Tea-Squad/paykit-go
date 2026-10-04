@@ -27,14 +27,14 @@ func (m *mockFullGateway) Charge(ctx context.Context, req *paykit.ChargeRequest)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if req.Amount <= 0 {
+	if req.Amount.IsZero() || req.Amount.Amount() <= 0 {
 		return nil, errors.New("invalid amount")
 	}
 	return &paykit.ChargeResponse{
 		Success:       true,
 		Message:       "Charge initiated",
 		TransactionID: "txn_charge_123",
-		Status:        "pending",
+		Status:        paykit.StatusProcessing,
 		Metadata: map[string]any{
 			"phone": req.Phone,
 		},
@@ -49,7 +49,7 @@ func (m *mockFullGateway) QueryStatus(ctx context.Context, req *paykit.StatusReq
 		Success:       true,
 		Message:       "Transaction completed",
 		TransactionID: req.TransactionID,
-		Status:        "completed",
+		Status:        paykit.StatusSuccess,
 	}, nil
 }
 
@@ -61,7 +61,7 @@ func (m *mockFullGateway) Refund(ctx context.Context, req *paykit.RefundRequest)
 		Success:       true,
 		RefundID:      "ref_456",
 		TransactionID: req.TransactionID,
-		Status:        "completed",
+		Status:        paykit.StatusSuccess,
 	}, nil
 }
 
@@ -69,14 +69,14 @@ func (m *mockFullGateway) Disburse(ctx context.Context, req *paykit.Disbursement
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if req.Amount <= 0 {
+	if req.Amount.IsZero() || req.Amount.Amount() <= 0 {
 		return nil, errors.New("invalid disbursement amount")
 	}
 	return &paykit.DisbursementResponse{
 		Success:       true,
 		Message:       "Payout scheduled",
 		TransactionID: "disb_789",
-		Status:        "pending",
+		Status:        paykit.StatusProcessing,
 	}, nil
 }
 
@@ -93,8 +93,8 @@ func (m *mockFullGateway) ParseAndVerify(r *http.Request) (*paykit.Event, error)
 		Provider:      m.name,
 		Type:          "charge.completed",
 		TransactionID: "txn_charge_123",
-		Amount:        1000,
-		Currency:      "KES",
+		Status:        paykit.StatusSuccess,
+		Amount:        paykit.NewKES(10),
 		Timestamp:     time.Now().UTC(),
 		Raw:           json.RawMessage(body),
 	}, nil
@@ -105,10 +105,9 @@ func (m *mockFullGateway) CheckBalance(ctx context.Context, req *paykit.BalanceR
 		return nil, err
 	}
 	return &paykit.BalanceResponse{
-		Success:   true,
-		Currency:  "KES",
-		Balance:   500000,
-		Available: 450000,
+		Success:          true,
+		LedgerBalance:    paykit.NewKES(5000),
+		AvailableBalance: paykit.NewKES(4500),
 	}, nil
 }
 
@@ -147,9 +146,8 @@ func TestGatewayCapabilities(t *testing.T) {
 
 		// Test Charge
 		chargeResp, err := fullGw.Charge(ctx, &paykit.ChargeRequest{
-			Amount:   2500,
-			Currency: "KES",
-			Phone:    "+254712345678",
+			Amount: paykit.NewKES(25),
+			Phone:  "+254712345678",
 		})
 		if err != nil {
 			t.Fatalf("unexpected error charging: %v", err)
@@ -165,14 +163,14 @@ func TestGatewayCapabilities(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error querying status: %v", err)
 		}
-		if statusResp.Status != "completed" {
+		if statusResp.Status != paykit.StatusSuccess {
 			t.Errorf("unexpected status response: %+v", statusResp)
 		}
 
 		// Test Refund
 		refundResp, err := fullGw.Refund(ctx, &paykit.RefundRequest{
 			TransactionID: "txn_charge_123",
-			Amount:        2500,
+			Amount:        paykit.NewKES(25),
 		})
 		if err != nil {
 			t.Fatalf("unexpected error refunding: %v", err)
@@ -188,9 +186,8 @@ func TestGatewayCapabilities(t *testing.T) {
 		// Provider with Disburser
 		if disburser, ok := any(fullGw).(paykit.Disburser); ok {
 			payoutResp, err := disburser.Disburse(ctx, &paykit.DisbursementRequest{
-				Amount:   5000,
-				Currency: "KES",
-				Phone:    "+254798765432",
+				Amount: paykit.NewKES(50),
+				Phone:  "+254798765432",
 			})
 			if err != nil {
 				t.Fatalf("unexpected error disbursing: %v", err)
@@ -221,7 +218,7 @@ func TestGatewayCapabilities(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error parsing webhook: %v", err)
 		}
-		if evt.Type != "charge.completed" || evt.Amount != 1000 {
+		if evt.Type != "charge.completed" || evt.Amount != paykit.NewKES(10) {
 			t.Errorf("unexpected event: %+v", evt)
 		}
 		if string(evt.Raw) != `{"status":"success"}` {
@@ -260,7 +257,7 @@ func TestGatewayCapabilities(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error checking balance: %v", err)
 		}
-		if balResp.Balance != 500000 || balResp.Available != 450000 {
+		if balResp.LedgerBalance != paykit.NewKES(5000) || balResp.AvailableBalance != paykit.NewKES(4500) {
 			t.Errorf("unexpected balance response: %+v", balResp)
 		}
 
@@ -273,14 +270,14 @@ func TestGatewayCapabilities(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
 
-		_, err := fullGw.Charge(ctx, &paykit.ChargeRequest{Amount: 100})
+		_, err := fullGw.Charge(ctx, &paykit.ChargeRequest{Amount: paykit.NewKES(1)})
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("expected context.Canceled error, got: %v", err)
 		}
 
 		var gw paykit.Gateway = fullGw
 		disburser := gw.(paykit.Disburser)
-		_, err = disburser.Disburse(ctx, &paykit.DisbursementRequest{Amount: 100})
+		_, err = disburser.Disburse(ctx, &paykit.DisbursementRequest{Amount: paykit.NewKES(1)})
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("expected context.Canceled error, got: %v", err)
 		}
@@ -288,8 +285,7 @@ func TestGatewayCapabilities(t *testing.T) {
 
 	t.Run("JSON Serialization", func(t *testing.T) {
 		req := paykit.ChargeRequest{
-			Amount:         10000,
-			Currency:       "KES",
+			Amount:         paykit.NewKES(100),
 			Phone:          "+254712345678",
 			Description:    "Test order",
 			Reference:      "ORD-101",
@@ -319,8 +315,8 @@ func TestGatewayCapabilities(t *testing.T) {
 			Type:          "charge.completed",
 			TransactionID: "txn_456",
 			Reference:     "REF-001",
-			Amount:        2000,
-			Currency:      "KES",
+			Status:        paykit.StatusSuccess,
+			Amount:        paykit.NewKES(20),
 			Phone:         "+254700000000",
 			Timestamp:     time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC),
 			Raw:           json.RawMessage(rawPayload),
