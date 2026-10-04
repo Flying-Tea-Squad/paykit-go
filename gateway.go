@@ -5,57 +5,53 @@ import (
 	"net/http"
 )
 
-// Gateway is the primary collection interface implemented by providers that
-// support customer charges, refunds, and transaction status queries.
+// Gateway is the primary payment collection interface that every provider adapter
+// implements. It provides methods for customer payment collection (Charge),
+// status queries, and refunds.
 type Gateway interface {
-	// Name returns the canonical provider identifier (e.g., "mpesa", "airtel", "pesapal").
+	// Name returns the unique canonical provider identifier (e.g., "mpesa", "airtel", "pesapal", "bogus").
 	Name() string
 
-	// Charge initiates a customer payment collection (e.g., STK Push, USSD push, or hosted checkout).
+	// Charge initiates a customer payment collection (e.g. STK Push, USSD push, or hosted checkout).
 	Charge(ctx context.Context, req *ChargeRequest) (*ChargeResponse, error)
 
-	// QueryStatus queries the current status of an initiated transaction.
+	// QueryStatus retrieves the current processing state of an initiated transaction.
 	QueryStatus(ctx context.Context, req *StatusRequest) (*StatusResponse, error)
 
-	// Refund initiates a full or partial refund/reversal of a completed charge.
+	// Refund initiates a full or partial reversal of a completed charge.
 	Refund(ctx context.Context, req *RefundRequest) (*RefundResponse, error)
 }
 
-// Disburser is implemented by payment providers supporting B2C payouts.
+// Disburser defines the capability to disburse funds to a recipient (e.g. B2C mobile payouts).
+// Providers that support disbursements implement this interface. Callers can discover
+// this capability at runtime using Go type assertions:
+//
+//	if d, ok := gw.(paykit.Disburser); ok {
+//	    resp, err := d.Disburse(ctx, disburseReq)
+//	}
 type Disburser interface {
-	// Disburse transfers funds from the business account to a recipient (e.g. B2C mobile payout).
+	// Disburse transfers funds from the business account to a recipient.
 	Disburse(ctx context.Context, req *DisbursementRequest) (*DisbursementResponse, error)
 }
 
-// WebhookHandler is implemented by providers that receive and process asynchronous callbacks.
+// WebhookHandler defines the capability to parse, authenticate, and unpack incoming
+// asynchronous notifications (IPNs or webhooks) from a payment provider into a normalized Event.
+//
+//	if wh, ok := gw.(paykit.WebhookHandler); ok {
+//	    event, err := wh.ParseAndVerify(req)
+//	}
 type WebhookHandler interface {
-	// ParseAndVerify validates request authenticity (signatures, tokens) and unpacks the payload into an Event.
+	// ParseAndVerify validates request authenticity (e.g., HMAC/RSA signatures, IP whitelists)
+	// and deserializes the payload into a normalized Event.
+	//
+	// Note: ParseAndVerify reads and consumes the entire request body (r.Body). Callers that
+	// need to inspect or process the payload again after verification should rely on the returned
+	// Event.Raw or buffer r.Body before calling ParseAndVerify.
 	ParseAndVerify(r *http.Request) (*Event, error)
 }
 
-// BalanceChecker is implemented by providers that expose account balance inquiries.
+// BalanceChecker defines the capability to query the current balance of the merchant's account.
 type BalanceChecker interface {
-	// CheckBalance retrieves current ledger and available balances from the provider.
+	// CheckBalance retrieves current ledger and available balance information from the provider.
 	CheckBalance(ctx context.Context, req *BalanceRequest) (*BalanceResponse, error)
-}
-
-// Event represents a parsed webhook event.
-type Event struct {
-	Type          string
-	TransactionID string
-	Status        TransactionStatus
-	Amount        Money
-	Raw           map[string]any
-}
-
-// BalanceRequest queries account balance.
-type BalanceRequest struct {
-	IdempotencyKey string
-}
-
-// BalanceResponse represents balance inquiry result.
-type BalanceResponse struct {
-	LedgerBalance    Money
-	AvailableBalance Money
-	Raw              map[string]any
 }
