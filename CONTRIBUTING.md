@@ -160,6 +160,7 @@ Each provider should:
 - Implement the shared gateway interface.
 - Handle provider-specific authentication internally.
 - Normalize responses into the common `Response` type.
+- Map any provider-specific error codes into the `gatewayErrorMap` namespace in `errors.go`.
 - Include fixtures and tests.
 - Document any provider-specific configuration.
 
