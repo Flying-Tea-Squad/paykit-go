@@ -1,6 +1,9 @@
 package paykit
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 // Standardized error codes returned by PayKit.
 const (
@@ -51,11 +54,19 @@ var gatewayErrorMap = map[string]map[string]string{
 }
 
 // MapGatewayErrorCode translates a provider-specific error code into a
-// standardized PayKit error code. If the code is unknown, it returns
-// ErrProcessingError.
+// standardized PayKit error code.
+//
+// The provider identifier is case-insensitive; it is automatically trimmed of
+// whitespace and lowercased before lookup (e.g., "Mpesa" resolves to "mpesa").
+//
+// If the error code is not found within the provider's namespace, the generic
+// "default" namespace is searched as a fallback. If the code remains unknown,
+// ErrProcessingError is returned.
 func MapGatewayErrorCode(provider, code string) string {
+	normalizedProvider := strings.ToLower(strings.TrimSpace(provider))
+
 	// First check the provider-specific namespace
-	if providerMap, ok := gatewayErrorMap[provider]; ok {
+	if providerMap, ok := gatewayErrorMap[normalizedProvider]; ok {
 		if standardized, ok := providerMap[code]; ok {
 			return standardized
 		}
