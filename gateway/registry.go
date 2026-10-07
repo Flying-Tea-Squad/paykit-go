@@ -8,6 +8,9 @@ import (
 )
 
 // Factory constructs a payment gateway from provider-specific configuration.
+//
+// Deprecated: Use direct provider constructors (e.g., mpesa.New(cfg)) or
+// register typed factories with paykit.Register instead.
 type Factory func(config any) (paykit.Gateway, error)
 
 var (
@@ -16,6 +19,8 @@ var (
 )
 
 // Register adds a provider factory to the registry.
+//
+// Deprecated: Use paykit.Register instead.
 func Register(name string, factory Factory) {
 	if name == "" {
 		panic("gateway: provider name cannot be empty")
@@ -35,6 +40,9 @@ func Register(name string, factory Factory) {
 }
 
 // New constructs a registered provider gateway.
+//
+// Deprecated: Use direct provider constructors (e.g., mpesa.New(cfg)) or
+// paykit.Get instead.
 func New(name string, config any) (paykit.Gateway, error) {
 	mu.RLock()
 	factory, ok := factories[name]
