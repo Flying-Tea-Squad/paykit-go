@@ -51,7 +51,7 @@ func (a *AuthResponse) UnmarshalJSON(data []byte) error {
 // TokenManager handles fetching, caching, and automatic refreshing of M-Pesa OAuth2 tokens.
 type TokenManager struct {
 	mu             sync.RWMutex
-	client         paykit.HTTPClient
+	client         *paykit.HTTPClient
 	consumerKey    string
 	consumerSecret string
 	baseURL        string
@@ -61,9 +61,9 @@ type TokenManager struct {
 }
 
 // NewTokenManager creates a new TokenManager instance.
-func NewTokenManager(client paykit.HTTPClient, consumerKey, consumerSecret, baseURL string) *TokenManager {
+func NewTokenManager(client *paykit.HTTPClient, consumerKey, consumerSecret, baseURL string) *TokenManager {
 	if client == nil {
-		client = http.DefaultClient
+		client = paykit.NewHTTPClient(paykit.HTTPClientConfig{})
 	}
 	return &TokenManager{
 		client:         client,
@@ -130,12 +130,7 @@ func (tm *TokenManager) fetchAccessToken(ctx context.Context) (string, time.Time
 	req.Header.Set("Authorization", "Basic "+auth)
 	req.Header.Set("Accept", "application/json")
 
-	client := tm.client
-	if client == nil {
-		client = http.DefaultClient
-	}
-
-	resp, err := client.Do(req)
+	resp, err := tm.client.Do(ctx, req)
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("mpesa: oauth request failed: %w", err)
 	}
