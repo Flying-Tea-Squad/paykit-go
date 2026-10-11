@@ -4,32 +4,34 @@ import "errors"
 
 // Standardized error codes returned by PayKit.
 const (
-	ErrIncorrectNumber   = "incorrect_number"
-	ErrInvalidNumber     = "invalid_number"
-	ErrInvalidExpiryDate = "invalid_expiry_date"
-	ErrInvalidCVC        = "invalid_cvc"
-	ErrExpiredCard       = "expired_card"
-	ErrCardDeclined      = "card_declined"
-	ErrProcessingError   = "processing_error"
-	ErrDuplicate         = "duplicate_transaction"
-	ErrAuthFailed        = "authentication_failed"
-	ErrInsufficientFunds = "insufficient_funds"
-	ErrTimeout           = "request_timeout"
+	ErrIncorrectNumber       = "incorrect_number"
+	ErrInvalidNumber         = "invalid_number"
+	ErrInvalidExpiryDate     = "invalid_expiry_date"
+	ErrInvalidCVC            = "invalid_cvc"
+	ErrExpiredCard           = "expired_card"
+	ErrCardDeclined          = "card_declined"
+	ErrProcessingError       = "processing_error"
+	ErrDuplicate             = "duplicate_transaction"
+	ErrAuthFailed            = "authentication_failed"
+	ErrInsufficientFunds     = "insufficient_funds"
+	ErrTimeout               = "request_timeout"
+	ErrMissingIdempotencyKey = "missing_idempotency_key"
 )
 
 // Sentinel errors for programmatic error checks.
 var (
-	ErrIncorrectNumberSentinel   = errors.New(ErrIncorrectNumber)
-	ErrInvalidNumberSentinel     = errors.New(ErrInvalidNumber)
-	ErrInvalidExpiryDateSentinel = errors.New(ErrInvalidExpiryDate)
-	ErrInvalidCVCSentinel        = errors.New(ErrInvalidCVC)
-	ErrExpiredCardSentinel       = errors.New(ErrExpiredCard)
-	ErrCardDeclinedSentinel      = errors.New(ErrCardDeclined)
-	ErrProcessingErrorSentinel   = errors.New(ErrProcessingError)
-	ErrDuplicateSentinel         = errors.New(ErrDuplicate)
-	ErrAuthFailedSentinel        = errors.New(ErrAuthFailed)
-	ErrInsufficientFundsSentinel = errors.New(ErrInsufficientFunds)
-	ErrTimeoutSentinel           = errors.New(ErrTimeout)
+	ErrIncorrectNumberSentinel       = errors.New(ErrIncorrectNumber)
+	ErrInvalidNumberSentinel         = errors.New(ErrInvalidNumber)
+	ErrInvalidExpiryDateSentinel     = errors.New(ErrInvalidExpiryDate)
+	ErrInvalidCVCSentinel            = errors.New(ErrInvalidCVC)
+	ErrExpiredCardSentinel           = errors.New(ErrExpiredCard)
+	ErrCardDeclinedSentinel          = errors.New(ErrCardDeclined)
+	ErrProcessingErrorSentinel       = errors.New(ErrProcessingError)
+	ErrDuplicateSentinel             = errors.New(ErrDuplicate)
+	ErrAuthFailedSentinel            = errors.New(ErrAuthFailed)
+	ErrInsufficientFundsSentinel     = errors.New(ErrInsufficientFunds)
+	ErrTimeoutSentinel               = errors.New(ErrTimeout)
+	ErrMissingIdempotencyKeySentinel = errors.New("paykit: missing required idempotency key for mutating request")
 )
 
 // gatewayErrorMap maps provider-specific error codes to standardized PayKit codes.
