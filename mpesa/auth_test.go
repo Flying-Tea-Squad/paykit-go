@@ -9,7 +9,17 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	paykit "github.com/Flying-Tea-Squad/paykit-go"
 )
+
+// testHTTPClient wraps a test-server *http.Client into *paykit.HTTPClient
+// so it uses the test server's TLS certificates and connection.
+func testHTTPClient(c *http.Client) *paykit.HTTPClient {
+	hc := paykit.NewHTTPClient(paykit.HTTPClientConfig{})
+	hc.SetTransport(c.Transport)
+	return hc
+}
 
 func TestGetAccessToken_Success(t *testing.T) {
 	consumerKey := "test_key"
@@ -40,7 +50,7 @@ func TestGetAccessToken_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tm := NewTokenManager(server.Client(), consumerKey, consumerSecret, server.URL)
+	tm := NewTokenManager(testHTTPClient(server.Client()), consumerKey, consumerSecret, server.URL)
 
 	token, err := tm.GetAccessToken(context.Background())
 	if err != nil {
@@ -68,7 +78,7 @@ func TestGetAccessToken_UnexportedMethod(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tm := NewTokenManager(server.Client(), consumerKey, consumerSecret, server.URL)
+	tm := NewTokenManager(testHTTPClient(server.Client()), consumerKey, consumerSecret, server.URL)
 
 	token, err := tm.getAccessToken(context.Background())
 	if err != nil {
@@ -95,7 +105,7 @@ func TestGetAccessToken_Caching(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tm := NewTokenManager(server.Client(), consumerKey, consumerSecret, server.URL)
+	tm := NewTokenManager(testHTTPClient(server.Client()), consumerKey, consumerSecret, server.URL)
 
 	// First call - fetches token from server
 	token1, err := tm.GetAccessToken(context.Background())
@@ -136,7 +146,7 @@ func TestGetAccessToken_RefreshOnExpiry(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tm := NewTokenManager(server.Client(), consumerKey, consumerSecret, server.URL)
+	tm := NewTokenManager(testHTTPClient(server.Client()), consumerKey, consumerSecret, server.URL)
 	tm.expiryBuffer = 100 * time.Millisecond
 
 	// First call returns token_1
@@ -182,7 +192,7 @@ func TestGetAccessToken_Concurrency(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tm := NewTokenManager(server.Client(), consumerKey, consumerSecret, server.URL)
+	tm := NewTokenManager(testHTTPClient(server.Client()), consumerKey, consumerSecret, server.URL)
 
 	var wg sync.WaitGroup
 	workers := 20
@@ -230,7 +240,7 @@ func TestGetAccessToken_HTTPError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tm := NewTokenManager(server.Client(), "key", "secret", server.URL)
+	tm := NewTokenManager(testHTTPClient(server.Client()), "key", "secret", server.URL)
 	_, err := tm.GetAccessToken(context.Background())
 	if err == nil {
 		t.Error("expected error for 401 response, got nil")
@@ -245,7 +255,7 @@ func TestGetAccessToken_InvalidJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tm := NewTokenManager(server.Client(), "key", "secret", server.URL)
+	tm := NewTokenManager(testHTTPClient(server.Client()), "key", "secret", server.URL)
 	_, err := tm.GetAccessToken(context.Background())
 	if err == nil {
 		t.Error("expected error for invalid JSON body, got nil")
@@ -260,7 +270,7 @@ func TestGetAccessToken_EmptyToken(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tm := NewTokenManager(server.Client(), "key", "secret", server.URL)
+	tm := NewTokenManager(testHTTPClient(server.Client()), "key", "secret", server.URL)
 	_, err := tm.GetAccessToken(context.Background())
 	if err == nil {
 		t.Error("expected error for empty access token, got nil")
@@ -286,7 +296,7 @@ func TestAuthResponse_UnmarshalJSON_NumericExpiresIn(t *testing.T) {
 	}))
 	defer server.Close()
 
-	tmServer := NewTokenManager(server.Client(), "key", "secret", server.URL)
+	tmServer := NewTokenManager(testHTTPClient(server.Client()), "key", "secret", server.URL)
 	tok, err := tmServer.GetAccessToken(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
