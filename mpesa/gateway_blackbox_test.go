@@ -45,13 +45,13 @@ func TestMpesaGateway_CapabilityInterfaceConformance(t *testing.T) {
 
 	// Direct typed constructor
 	gw, err := mpesa.New(mpesa.Config{
-		ConsumerKey:       "test-consumer-key",
-		ConsumerSecret:    "test-consumer-secret",
-		Passkey:           "test-passkey",
-		BusinessShortCode: "174379",
-		BaseURL:           server.URL,
-		CallbackURL:       "https://example.com/stk-callback",
-		InitiatorName:     "operator",
+		ConsumerKey:        "test-consumer-key",
+		ConsumerSecret:     "test-consumer-secret",
+		Passkey:            "test-passkey",
+		BusinessShortCode:  "174379",
+		BaseURL:            server.URL,
+		CallbackURL:        "https://example.com/stk-callback",
+		InitiatorName:      "operator",
 		SecurityCredential: "encrypted-password",
 		HTTPClient: paykit.NewHTTPClient(paykit.HTTPClientConfig{
 			IdempotencyPolicy: paykit.IdempotencyPolicyAutoGenerate,
