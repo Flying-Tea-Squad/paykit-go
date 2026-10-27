@@ -82,7 +82,7 @@ paykit-go/
 ├── mpesa/            # M-Pesa provider
 ├── airtelmoney/      # Airtel Money provider
 ├── pesapal/          # Pesapal provider
-├── callback/         # Shared callback utilities
+├── webhook/          # Webhook receiver and verification utilities
 ├── driver/           # Import all providers
 └── docs/             # Project documentation
 ```
@@ -136,7 +136,7 @@ Examples:
 
 ```terminal
 feat(mpesa): add OAuth token caching
-fix(callback): validate callback signature
+fix(webhook): validate webhook signature
 docs: update contributing guide
 test(mpesa): add stk push fixtures
 refactor(http): simplify retry logic
