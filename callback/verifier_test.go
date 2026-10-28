@@ -2,6 +2,8 @@ package callback
 
 import (
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
@@ -102,6 +104,8 @@ func TestVerifyHMAC_EdgeCases(t *testing.T) {
 		{"odd length hex", []byte("data"), "abc", "secret", true},
 		{"wrong secret", []byte("data"), "abcdef", "secret", true},
 		{"nil payload", nil, "abcdef", "secret", true},
+		{"invalid hex first char", []byte("data"), "g0", "secret", true},
+		{"invalid hex second char", []byte("data"), "0g", "secret", true},
 	}
 
 	for _, tt := range tests {
@@ -193,6 +197,22 @@ func TestVerifyRSAPublicKey_PKCS1v15(t *testing.T) {
 	}
 }
 
+func encodePEM(blockType string, data []byte) string {
+	return string(pem.EncodeToMemory(&pem.Block{Type: blockType, Bytes: data}))
+}
+
+func generateECDSAPublicKeyPEM(t *testing.T) string {
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("failed to generate ECDSA key: %v", err)
+	}
+	pubKeyBytes, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		t.Fatalf("failed to marshal ECDSA public key: %v", err)
+	}
+	return encodePEM("PUBLIC KEY", pubKeyBytes)
+}
+
 func TestVerifyRSAPublicKey_CrossPaddingFails(t *testing.T) {
 	privateKey, pubPEM := generateRSAKeyPair(t)
 	payload := []byte("test payload")
@@ -226,6 +246,8 @@ func TestVerifyRSAPublicKey_Errors(t *testing.T) {
 		{"empty public key", payload, sig, "", nil},
 		{"invalid PEM", payload, sig, "not a valid pem", nil},
 		{"wrong key type", payload, sig, "-----BEGIN PRIVATE KEY-----\ninvalid\n-----END PRIVATE KEY-----", nil},
+		{"invalid PKIX bytes", payload, sig, encodePEM("PUBLIC KEY", []byte{0x01, 0x02, 0x03}), nil},
+		{"non-RSA public key", payload, sig, generateECDSAPublicKeyPEM(t), nil},
 		{"wrong hash", payload, sig, pubPEM, &RSAVerifyOptions{Hash: crypto.SHA512}},
 	}
 

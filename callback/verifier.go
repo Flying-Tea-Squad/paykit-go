@@ -68,6 +68,7 @@ type RSAVerifyOptions struct {
 // VerifyRSAPublicKey verifies an RSA signature using a PEM-encoded public key.
 // signature is raw bytes (not hex). publicKeyPEM is PKIX PEM format.
 // opts can be nil for defaults (PSS + SHA256).
+// The payload is hashed using the specified hash function before verification.
 func VerifyRSAPublicKey(payload, signature []byte, publicKeyPEM string, opts *RSAVerifyOptions) error {
 	if len(payload) == 0 || len(signature) == 0 || publicKeyPEM == "" {
 		return errors.New("callback: missing payload, signature, or public key")
@@ -97,10 +98,14 @@ func VerifyRSAPublicKey(payload, signature []byte, publicKeyPEM string, opts *RS
 		padding = opts.Padding
 	}
 
+	hasher := h.New()
+	hasher.Write(payload)
+	hashedPayload := hasher.Sum(nil)
+
 	if padding == RSAPaddingPSS {
-		return rsa.VerifyPSS(rsaPub, h, payload, signature, nil)
+		return rsa.VerifyPSS(rsaPub, h, hashedPayload, signature, nil)
 	}
-	return rsa.VerifyPKCS1v15(rsaPub, h, payload, signature)
+	return rsa.VerifyPKCS1v15(rsaPub, h, hashedPayload, signature)
 }
 
 // ============================================================================
@@ -142,26 +147,40 @@ func decodeHex(s string) ([]byte, error) {
 	}
 	b := make([]byte, len(s)/2)
 	for i := 0; i < len(s); i += 2 {
-		var v byte
-		if s[i] >= '0' && s[i] <= '9' {
-			v = (s[i] - '0') << 4
-		} else if s[i] >= 'a' && s[i] <= 'f' {
-			v = (s[i] - 'a' + 10) << 4
-		} else if s[i] >= 'A' && s[i] <= 'F' {
-			v = (s[i] - 'A' + 10) << 4
-		} else {
-			return nil, errors.New("invalid hex")
-		}
-		if s[i+1] >= '0' && s[i+1] <= '9' {
-			v |= s[i+1] - '0'
-		} else if s[i+1] >= 'a' && s[i+1] <= 'f' {
-			v |= s[i+1] - 'a' + 10
-		} else if s[i+1] >= 'A' && s[i+1] <= 'F' {
-			v |= s[i+1] - 'A' + 10
-		} else {
-			return nil, errors.New("invalid hex")
+		v, err := decodeHexBytePair(s[i], s[i+1])
+		if err != nil {
+			return nil, err
 		}
 		b[i/2] = v
 	}
 	return b, nil
+}
+
+func decodeHexBytePair(c1, c2 byte) (byte, error) {
+	var v byte
+	valid := true
+	if c1 >= '0' && c1 <= '9' {
+		v = (c1 - '0') << 4
+	} else if c1 >= 'a' && c1 <= 'f' {
+		v = (c1 - 'a' + 10) << 4
+	} else if c1 >= 'A' && c1 <= 'F' {
+		v = (c1 - 'A' + 10) << 4
+	} else {
+		valid = false
+	}
+	if valid {
+		if c2 >= '0' && c2 <= '9' {
+			v |= c2 - '0'
+		} else if c2 >= 'a' && c2 <= 'f' {
+			v |= c2 - 'a' + 10
+		} else if c2 >= 'A' && c2 <= 'F' {
+			v |= c2 - 'A' + 10
+		} else {
+			valid = false
+		}
+	}
+	if !valid {
+		return 0, errors.New("invalid hex")
+	}
+	return v, nil
 }
