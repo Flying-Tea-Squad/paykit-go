@@ -68,28 +68,28 @@ paykit-go/
 
 ## Naming Conventions
 
-| Convention | Rule | Example |
-|---|---|---|
-| Package name | lowercase, no underscores | `mpesa`, `gateway` |
-| File name | snake_case matching purpose | `stk_push.go`, `callback.go` |
-| Gateway type | `{Provider}Gateway` | `MpesaGateway` |
-| Constructor | `New{Provider}` | `NewMpesa` |
-| Request types | `{Action}Request` | `STKPushRequest` |
-| Response types | `{Action}Response` | `STKPushResponse` |
-| Tests | `_test.go` adjacent to source | `client_test.go` |
-| Error vars | `Err{Description}` | `ErrAuthFailed` |
+| Convention     | Rule                          | Example                      |
+| -------------- | ----------------------------- | ---------------------------- |
+| Package name   | lowercase, no underscores     | `mpesa`, `gateway`           |
+| File name      | snake_case matching purpose   | `stk_push.go`, `callback.go` |
+| Gateway type   | `{Provider}Gateway`           | `MpesaGateway`               |
+| Constructor    | `New{Provider}`               | `NewMpesa`                   |
+| Request types  | `{Action}Request`             | `STKPushRequest`             |
+| Response types | `{Action}Response`            | `STKPushResponse`            |
+| Tests          | `_test.go` adjacent to source | `client_test.go`             |
+| Error vars     | `Err{Description}`            | `ErrAuthFailed`              |
 
 ## Design Decisions
 
-| Decision | Choice |
-|---|---|
-| Request types | Per-gateway (not shared) — M-Pesa STK Push and Airtel Money have different required fields |
+| Decision      | Choice                                                                                                               |
+| ------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Request types | Per-gateway (not shared) — M-Pesa STK Push and Airtel Money have different required fields                           |
 | Response type | `Response` with shared fields (Success, Message, TransactionID, etc.) + `.Raw json.RawMessage` for full API response |
-| Logging | `log/slog` — no custom Logger interface |
-| Idempotency | `IdempotencyKey string` on all mutating request structs |
-| Callback/IPN | Kept inside each provider initially; `callback/` extracted only if patterns converge (Phase 3) |
-| Error codes | Sentinel errors + standardized string codes mapped per gateway |
-| Auth strategy | Each provider implements its own auth (M-Pesa OAuth2, Airtel Bearer, Pesapal API key) |
+| Logging       | `log/slog` — no custom Logger interface                                                                              |
+| Idempotency   | `IdempotencyKey string` on all mutating request structs                                                              |
+| Callback/IPN  | Kept inside each provider initially; `callback/` extracted only if patterns converge (Phase 3)                       |
+| Error codes   | Sentinel errors + standardized string codes mapped per gateway                                                       |
+| Auth strategy | Each provider implements its own auth (M-Pesa OAuth2, Airtel Bearer, Pesapal API key)                                |
 
 ---
 
@@ -125,6 +125,7 @@ paykit-go/
 - Tests: `go test ./...` must pass
 
 **Files created in this phase:**
+
 - `go.mod`
 - `.github/workflows/ci.yml`
 - `gateway.go`
@@ -161,6 +162,7 @@ paykit-go/
 - `mpesa/fixtures/*.json` — recorded API responses for test mocking
 
 **Endpoints implemented:**
+
 - STK Push (Lipa Na M-Pesa Online)
 - STK Push Query
 - C2B Register URL
@@ -172,6 +174,7 @@ paykit-go/
 - Customer-to-Business Advanced
 
 **Files created:**
+
 - `mpesa/client.go`
 - `mpesa/auth.go`
 - `mpesa/signing.go`
@@ -207,6 +210,7 @@ paykit-go/
 - `airtelmoney/fixtures/*.json` — test fixtures
 
 **Files created:**
+
 - `airtelmoney/client.go`
 - `airtelmoney/auth.go`
 - `airtelmoney/types.go`
@@ -240,6 +244,7 @@ paykit-go/
   - `callback/parser_test.go`
 
 **Files created:**
+
 - `pesapal/client.go`
 - `pesapal/ipn.go`
 - `pesapal/types.go`
@@ -301,6 +306,7 @@ paykit-go/
 - Godoc `Example*` functions on each provider
 
 **Files created/modified:**
+
 - `client.go`
 - `scrubbing.go`
 - `driver/import_all.go`
@@ -327,6 +333,7 @@ paykit-go/
 - git tag `v1.0.0`
 
 **Files created/modified:**
+
 - `http.go` — rate limiter + otel + retry enhancements
 - `callback/verifier.go` — webhook signature helpers
 - `CHANGELOG.md`
