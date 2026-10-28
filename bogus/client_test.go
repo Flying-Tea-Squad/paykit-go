@@ -51,13 +51,13 @@ func TestClient_Charge_TableDriven(t *testing.T) {
 	client := New()
 
 	tests := []struct {
-		name           string
-		req            *paykit.ChargeRequest
-		ctx            func() (context.Context, context.CancelFunc)
-		wantStatus     paykit.TransactionStatus
-		wantSuccess    bool
-		wantErr        error
-		wantTxnIDPfx   string
+		name         string
+		req          *paykit.ChargeRequest
+		ctx          func() (context.Context, context.CancelFunc)
+		wantStatus   paykit.TransactionStatus
+		wantSuccess  bool
+		wantErr      error
+		wantTxnIDPfx string
 	}{
 		{
 			name:         "amount ends in 00 -> StatusSuccess",
@@ -108,9 +108,9 @@ func TestClient_Charge_TableDriven(t *testing.T) {
 			wantTxnIDPfx: "bogus_chg_txn_500",
 		},
 		{
-			name:       "nil request returns ErrNilRequest",
-			req:        nil,
-			wantErr:    ErrNilRequest,
+			name:    "nil request returns ErrNilRequest",
+			req:     nil,
+			wantErr: ErrNilRequest,
 		},
 		{
 			name: "cancelled context returns context.Canceled",
@@ -184,13 +184,13 @@ func TestClient_Disburse_TableDriven(t *testing.T) {
 	client := New()
 
 	tests := []struct {
-		name           string
-		req            *paykit.DisbursementRequest
-		ctx            func() (context.Context, context.CancelFunc)
-		wantStatus     paykit.TransactionStatus
-		wantSuccess    bool
-		wantErr        error
-		wantTxnIDPfx   string
+		name         string
+		req          *paykit.DisbursementRequest
+		ctx          func() (context.Context, context.CancelFunc)
+		wantStatus   paykit.TransactionStatus
+		wantSuccess  bool
+		wantErr      error
+		wantTxnIDPfx string
 	}{
 		{
 			name:         "amount ends in 00 -> StatusSuccess",
@@ -225,9 +225,9 @@ func TestClient_Disburse_TableDriven(t *testing.T) {
 			wantTxnIDPfx: "bogus_disb_disb_1000",
 		},
 		{
-			name:       "nil request returns ErrNilRequest",
-			req:        nil,
-			wantErr:    ErrNilRequest,
+			name:    "nil request returns ErrNilRequest",
+			req:     nil,
+			wantErr: ErrNilRequest,
 		},
 		{
 			name: "cancelled context returns context.Canceled",
