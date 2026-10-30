@@ -7,7 +7,7 @@ package airtel
 // Amount is sent as a string in major units per the API specification.
 // PIN is optional and depends on merchant configuration.
 type CollectionRequest struct {
-	Reference string `json:"reference"`
+	Reference  string `json:"reference"`
 	Subscriber struct {
 		Country  string `json:"country"`
 		Currency string `json:"currency"`
@@ -45,7 +45,7 @@ type CollectionResponse struct {
 // This struct follows the issue specification using /standard/v2/disbursements/
 // and the subscriber/transaction nesting. Adjust if the provider confirms otherwise.
 type DisbursementRequest struct {
-	Reference string `json:"reference"`
+	Reference  string `json:"reference"`
 	Subscriber struct {
 		Country  string `json:"country"`
 		Currency string `json:"currency"`
@@ -64,10 +64,10 @@ type DisbursementRequest struct {
 type DisbursementResponse struct {
 	Data struct {
 		Transaction struct {
-			ID           string `json:"id"`
-			Status       string `json:"status"`
-			StatusCode   string `json:"statusCode,omitempty"`
-			Message      string `json:"message,omitempty"`
+			ID         string `json:"id"`
+			Status     string `json:"status"`
+			StatusCode string `json:"statusCode,omitempty"`
+			Message    string `json:"message,omitempty"`
 			// TransactionID is the provider's unique transaction reference for the payout.
 			TransactionID string `json:"transactionId,omitempty"`
 		} `json:"transaction"`
@@ -87,14 +87,14 @@ type TransactionStatusRequest struct {
 type TransactionStatusResponse struct {
 	Data struct {
 		Transaction struct {
-			ID        string `json:"id"`
-			Reference string `json:"reference,omitempty"`
-			Status    string `json:"status"`
+			ID         string `json:"id"`
+			Reference  string `json:"reference,omitempty"`
+			Status     string `json:"status"`
 			StatusCode string `json:"statusCode,omitempty"`
-			Amount    string `json:"amount,omitempty"`
-			Currency  string `json:"currency,omitempty"`
-			MSISDN    string `json:"msisdn,omitempty"`
-			Timestamp string `json:"timestamp,omitempty"`
+			Amount     string `json:"amount,omitempty"`
+			Currency   string `json:"currency,omitempty"`
+			MSISDN     string `json:"msisdn,omitempty"`
+			Timestamp  string `json:"timestamp,omitempty"`
 		} `json:"transaction"`
 	} `json:"data"`
 }
@@ -125,24 +125,24 @@ type ReconciliationRequest struct {
 type ReconciliationResponse struct {
 	Data struct {
 		Transactions []struct {
-			ID            string `json:"id"`
-			Reference     string `json:"reference,omitempty"`
-			Status        string `json:"status"`
-			StatusCode    string `json:"statusCode,omitempty"`
-			Amount        string `json:"amount,omitempty"`
-			Currency      string `json:"currency,omitempty"`
-			MSISDN        string `json:"msisdn,omitempty"`
-			Timestamp     string `json:"timestamp,omitempty"`
-			Type          string `json:"type,omitempty"` // e.g., "Collection", "Disbursement"
+			ID         string `json:"id"`
+			Reference  string `json:"reference,omitempty"`
+			Status     string `json:"status"`
+			StatusCode string `json:"statusCode,omitempty"`
+			Amount     string `json:"amount,omitempty"`
+			Currency   string `json:"currency,omitempty"`
+			MSISDN     string `json:"msisdn,omitempty"`
+			Timestamp  string `json:"timestamp,omitempty"`
+			Type       string `json:"type,omitempty"` // e.g., "Collection", "Disbursement"
 		} `json:"transactions"`
 		// Summary provides aggregate totals for the reconciliation period.
 		Summary struct {
-			TotalCount     int    `json:"totalCount,omitempty"`
-			TotalAmount    string `json:"totalAmount,omitempty"`
-			Currency       string `json:"currency,omitempty"`
-			SuccessfulCount int   `json:"successfulCount,omitempty"`
-			FailedCount    int    `json:"failedCount,omitempty"`
-			PendingCount   int    `json:"pendingCount,omitempty"`
+			TotalCount      int    `json:"totalCount,omitempty"`
+			TotalAmount     string `json:"totalAmount,omitempty"`
+			Currency        string `json:"currency,omitempty"`
+			SuccessfulCount int    `json:"successfulCount,omitempty"`
+			FailedCount     int    `json:"failedCount,omitempty"`
+			PendingCount    int    `json:"pendingCount,omitempty"`
 		} `json:"summary,omitempty"`
 	} `json:"data"`
 }
