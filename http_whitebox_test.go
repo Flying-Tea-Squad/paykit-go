@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"regexp"
 	"sync"
@@ -251,4 +252,35 @@ func TestCalculateBackoffWithJitter(t *testing.T) {
 				attempt, firstDelay)
 		}
 	}
+}
+
+func TestHTTPClientConcurrentZeroValueClient(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := &HTTPClient{}
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			req, err := http.NewRequest(http.MethodGet, server.URL, nil)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			resp, err := client.Do(context.Background(), req)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			_ = resp.Body.Close()
+		}()
+	}
+	close(start)
+	wg.Wait()
 }
