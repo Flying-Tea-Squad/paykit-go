@@ -2,12 +2,14 @@ package paykit
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -17,36 +19,78 @@ import (
 	"time"
 )
 
+// IdempotencyPolicy controls how HTTPClient handles missing Idempotency-Key headers
+// on mutating HTTP requests (POST, PUT, PATCH, DELETE).
+type IdempotencyPolicy int
+
 const (
-	defaultConnectionTimeout = 10 * time.Second
-	defaultRequestTimeout    = 30 * time.Second
-	defaultRetryBaseDelay    = 100 * time.Millisecond
-	defaultMaxAttempts       = 3
+	// IdempotencyPolicyRequire mandates that mutating requests provide an Idempotency-Key header;
+	// requests lacking a key return ErrMissingIdempotencyKeySentinel immediately without sending.
+	// This is the default policy for financial transaction safety.
+	IdempotencyPolicyRequire IdempotencyPolicy = iota
+
+	// IdempotencyPolicyAutoGenerate automatically generates a cryptographically secure UUIDv4
+	// for mutating requests if no Idempotency-Key header was supplied.
+	IdempotencyPolicyAutoGenerate
+
+	// IdempotencyPolicyOptional allows mutating requests to proceed without an Idempotency-Key header,
+	// but disables automatic retries for that request to prevent duplicate operations.
+	IdempotencyPolicyOptional
 )
 
-// HTTPClient wraps net/http with SDK defaults for timeouts, retries, logging,
-// and optional wire dumps.
-type HTTPClient struct {
-	client         *http.Client
-	logger         *slog.Logger
-	dumpWriter     io.Writer
-	dumpMu         sync.Mutex
-	maxAttempts    int
-	retryBaseDelay time.Duration
-}
+const (
+	defaultConnectionTimeout  = 10 * time.Second
+	defaultRequestTimeout     = 30 * time.Second
+	defaultRetryBaseDelay     = 100 * time.Millisecond
+	defaultMaxRetryAfterDelay = 60 * time.Second
+	defaultMaxAttempts        = 3
+	headerIdempotencyKey      = "Idempotency-Key"
+)
 
-// HTTPClientConfig configures HTTPClient.
+// HTTPClientConfig configures the shared transport client.
 type HTTPClientConfig struct {
+	// ConnectionTimeout specifies the maximum duration waiting for a network dial to complete.
 	ConnectionTimeout time.Duration
-	RequestTimeout    time.Duration
-	TLSConfig         *tls.Config
-	Logger            *slog.Logger
-	DumpWriter        io.Writer
-	RetryBaseDelay    time.Duration
-	MaxAttempts       int
+
+	// RequestTimeout specifies a time limit for requests made by this client.
+	RequestTimeout time.Duration
+
+	// TLSConfig contains custom TLS client configuration. It is cloned to prevent concurrent mutations.
+	TLSConfig *tls.Config
+
+	// Logger is an optional structured logger. When provided, debug details of request/response attempts are recorded.
+	Logger *slog.Logger
+
+	// DumpWriter is an optional writer to which full wire dumps of requests and responses will be written.
+	DumpWriter io.Writer
+
+	// RetryBaseDelay is the initial backoff delay between retry attempts.
+	RetryBaseDelay time.Duration
+
+	// MaxAttempts is the maximum number of attempts (initial attempt + retries) for retryable operations.
+	// Values greater than 3 are clamped to 3.
+	MaxAttempts int
+
+	// IdempotencyPolicy specifies the handling strategy for mutating requests missing an Idempotency-Key header.
+	// Defaults to IdempotencyPolicyRequire.
+	IdempotencyPolicy IdempotencyPolicy
 }
 
-// NewHTTPClient creates an HTTPClient with sensible defaults.
+// HTTPClient executes HTTP requests for payment provider clients with production-ready defaults,
+// automated exponential backoff retries, and centralized idempotency policy enforcement.
+type HTTPClient struct {
+	// Provider implementations hold *HTTPClient as a pointer field rather than embedding
+	// to avoid method promotion, prevent mutex copying, and share connection pools across services.
+	client            *http.Client
+	logger            *slog.Logger
+	dumpWriter        io.Writer
+	dumpMu            sync.Mutex
+	maxAttempts       int
+	retryBaseDelay    time.Duration
+	idempotencyPolicy IdempotencyPolicy
+}
+
+// NewHTTPClient creates a configured HTTP client suitable for payment gateway transport operations.
 func NewHTTPClient(config HTTPClientConfig) *HTTPClient {
 	connectionTimeout := config.ConnectionTimeout
 	if connectionTimeout <= 0 {
@@ -72,6 +116,7 @@ func NewHTTPClient(config HTTPClientConfig) *HTTPClient {
 	transport.DialContext = (&net.Dialer{
 		Timeout: connectionTimeout,
 	}).DialContext
+
 	if config.TLSConfig != nil {
 		transport.TLSClientConfig = config.TLSConfig.Clone()
 	}
@@ -81,33 +126,75 @@ func NewHTTPClient(config HTTPClientConfig) *HTTPClient {
 			Timeout:   requestTimeout,
 			Transport: transport,
 		},
-		logger:         config.Logger,
-		dumpWriter:     config.DumpWriter,
-		maxAttempts:    maxAttempts,
-		retryBaseDelay: retryBaseDelay,
+		logger:            config.Logger,
+		dumpWriter:        config.DumpWriter,
+		maxAttempts:       maxAttempts,
+		retryBaseDelay:    retryBaseDelay,
+		idempotencyPolicy: config.IdempotencyPolicy,
 	}
 }
 
-// SetTransport replaces the underlying HTTP transport. This is intended for
-// testing, where a test server's transport (carrying its TLS certificates)
-// must be injected after construction.
+// SetTransport replaces the underlying HTTP transport. This is primarily intended for
+// testing environments where a test server's custom transport must be injected.
 func (c *HTTPClient) SetTransport(rt http.RoundTripper) {
 	c.client.Transport = rt
 }
 
 // Do sends req with ctx and returns the final HTTP response.
+// It centralizes Idempotency-Key validation, auto-generation, exponential backoff retries with jitter,
+// and audit logging.
+//
+// If the request contains a body and retries are enabled (attempts > 1), req.GetBody
+// must be non-nil so the body can be rewound across retry attempts. Callers constructing
+// requests with standard constructors like http.NewRequestWithContext using bytes.Reader,
+// bytes.Buffer, or strings.Reader will have req.GetBody automatically populated.
 func (c *HTTPClient) Do(ctx context.Context, req *http.Request) (*http.Response, error) {
+	if req == nil {
+		return nil, fmt.Errorf("paykit: nil http request")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return c.execute(ctx, req)
+}
+
+// DoRequest sends req using req.Context() as the execution context.
+func (c *HTTPClient) DoRequest(req *http.Request) (*http.Response, error) {
+	if req == nil {
+		return nil, fmt.Errorf("paykit: nil http request")
+	}
+	ctx := req.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return c.Do(ctx, req)
+}
+
+func (c *HTTPClient) execute(ctx context.Context, req *http.Request) (*http.Response, error) {
 	if c == nil {
 		c = NewHTTPClient(HTTPClientConfig{})
 	}
 	if c.client == nil {
 		c.client = NewHTTPClient(HTTPClientConfig{}).client
 	}
-	if req == nil {
-		return nil, fmt.Errorf("paykit: nil http request")
-	}
-	if ctx == nil {
-		ctx = context.Background()
+
+	var idempotencyKey string
+	if isMutatingMethod(req.Method) {
+		idempotencyKey = req.Header.Get(headerIdempotencyKey)
+		if idempotencyKey == "" {
+			switch c.idempotencyPolicy {
+			case IdempotencyPolicyRequire:
+				return nil, ErrMissingIdempotencyKeySentinel
+			case IdempotencyPolicyAutoGenerate:
+				key, err := generateIdempotencyKey()
+				if err != nil {
+					return nil, fmt.Errorf("paykit: failed to generate idempotency key: %w", err)
+				}
+				idempotencyKey = key
+			case IdempotencyPolicyOptional:
+				// Proceed without key; request will not be eligible for retries
+			}
+		}
 	}
 
 	attempts := c.maxAttempts
@@ -115,25 +202,29 @@ func (c *HTTPClient) Do(ctx context.Context, req *http.Request) (*http.Response,
 		attempts = defaultMaxAttempts
 	}
 
-	// Non-idempotent methods (POST, PATCH) must not be retried automatically
-	// unless the caller has signalled safety via an Idempotency-Key header.
-	canRetry := isRetryableMethod(req)
-
-	// Body replay without buffering the full payload requires GetBody.
-	// net/http.NewRequest already sets GetBody for strings.Reader, bytes.Reader,
-	// and bytes.Buffer. For any other body type callers must set it themselves.
-	// When the method is non-idempotent (canRetry == false) the body is sent
-	// exactly once, so GetBody is not needed.
+	canRetry := isRetryableMethodWithKey(req.Method, idempotencyKey)
 	hasBody := req.Body != nil && req.Body != http.NoBody
+
+	// When retries are possible and a body is present, GetBody must be non-nil
 	if canRetry && attempts > 1 && hasBody && req.GetBody == nil {
 		return nil, errors.New("paykit: request body cannot be replayed; set req.GetBody or use a single-attempt client")
 	}
 
 	var lastErr error
 	for attempt := 1; attempt <= attempts; attempt++ {
-		attemptReq, err := cloneRequestForAttempt(ctx, req, attempt)
-		if err != nil {
-			return nil, err
+		var attemptReq *http.Request
+		if attempt == 1 {
+			attemptReq = req.Clone(ctx)
+		} else {
+			var err error
+			attemptReq, err = cloneRequestForRetry(ctx, req)
+			if err != nil {
+				return nil, err
+			}
+		}
+
+		if idempotencyKey != "" {
+			attemptReq.Header.Set(headerIdempotencyKey, idempotencyKey)
 		}
 
 		c.dumpRequest(attemptReq)
@@ -153,21 +244,22 @@ func (c *HTTPClient) Do(ctx context.Context, req *http.Request) (*http.Response,
 				"status", resp.StatusCode,
 			)
 
-			// 429 Too Many Requests: honor the Retry-After header when present,
-			// otherwise surface an error instead of retrying blindly.
+			// 429 Too Many Requests: honor Retry-After header or fall back to jittered backoff
 			if resp.StatusCode == http.StatusTooManyRequests {
 				if !canRetry || attempt == attempts {
 					return resp, nil
 				}
 
 				retryAfterHeader := resp.Header.Get("Retry-After")
-				_, _ = io.Copy(io.Discard, resp.Body)
-				_ = resp.Body.Close()
-
 				delay, ok := parseRetryAfter(retryAfterHeader)
 				if !ok {
-					return nil, fmt.Errorf("paykit: 429 Too Many Requests with no Retry-After header")
+					delay = calculateBackoffWithJitter(c.retryBaseDelay, attempt)
+				} else if delay > defaultMaxRetryAfterDelay {
+					delay = defaultMaxRetryAfterDelay
 				}
+
+				_, _ = io.Copy(io.Discard, resp.Body)
+				_ = resp.Body.Close()
 
 				if err := sleepFor(ctx, delay); err != nil {
 					return nil, err
@@ -206,33 +298,42 @@ func (c *HTTPClient) Do(ctx context.Context, req *http.Request) (*http.Response,
 	return nil, lastErr
 }
 
-func cloneRequestForAttempt(ctx context.Context, req *http.Request, attempt int) (*http.Request, error) {
+func cloneRequestForRetry(ctx context.Context, req *http.Request) (*http.Request, error) {
 	attemptReq := req.Clone(ctx)
-	if attempt > 1 && req.GetBody != nil {
+	if req.GetBody != nil {
 		body, err := req.GetBody()
 		if err != nil {
 			return nil, fmt.Errorf("paykit: clone request body: %w", err)
 		}
 		attemptReq.Body = body
 	}
-
 	return attemptReq, nil
 }
 
-// isRetryableMethod reports whether req may be safely retried.
-// POST and PATCH are non-idempotent; they are only retried when the caller
-// provides an Idempotency-Key header, signalling that the server can deduplicate.
-func isRetryableMethod(req *http.Request) bool {
-	switch req.Method {
-	case http.MethodPost, http.MethodPatch:
-		return req.Header.Get("Idempotency-Key") != ""
-	default:
+// isMutatingMethod reports whether the HTTP method alters server state.
+func isMutatingMethod(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
 		return true
+	default:
+		return false
 	}
 }
 
-// shouldRetryResponse reports whether a successful HTTP response warrants a retry.
-// 429 Too Many Requests is handled separately via parseRetryAfter.
+// isRetryableMethod reports whether req may be safely retried.
+// Mutating methods (POST, PUT, PATCH, DELETE) are only retried when an Idempotency-Key
+// header is present, guaranteeing upstream deduplication.
+func isRetryableMethod(req *http.Request) bool {
+	return isRetryableMethodWithKey(req.Method, req.Header.Get(headerIdempotencyKey))
+}
+
+func isRetryableMethodWithKey(method, idempotencyKey string) bool {
+	if isMutatingMethod(method) {
+		return idempotencyKey != ""
+	}
+	return true
+}
+
 func shouldRetryResponse(resp *http.Response) bool {
 	return resp.StatusCode >= http.StatusInternalServerError
 }
@@ -284,7 +385,35 @@ func parseRetryAfter(header string) (time.Duration, bool) {
 }
 
 func sleepBeforeRetry(ctx context.Context, baseDelay time.Duration, attempt int) error {
-	return sleepFor(ctx, baseDelay*time.Duration(1<<uint(attempt-1)))
+	return sleepFor(ctx, calculateBackoffWithJitter(baseDelay, attempt))
+}
+
+func calculateBackoffWithJitter(baseDelay time.Duration, attempt int) time.Duration {
+	if baseDelay <= 0 {
+		return 0
+	}
+	if attempt < 1 {
+		attempt = 1
+	}
+	shift := attempt - 1
+	if shift > 30 {
+		shift = 30
+	}
+	base := baseDelay * time.Duration(1<<uint(shift))
+
+	// ±20% jitter: range is [0.8 * base, 1.2 * base]
+	minDelay := base * 80 / 100
+	maxDelay := base * 120 / 100
+	variance := maxDelay - minDelay
+	if variance <= 0 {
+		return base
+	}
+
+	n, err := rand.Int(rand.Reader, big.NewInt(int64(variance)+1))
+	if err != nil {
+		return base
+	}
+	return minDelay + time.Duration(n.Int64())
 }
 
 func sleepFor(ctx context.Context, d time.Duration) error {
@@ -309,33 +438,41 @@ func (c *HTTPClient) dumpRequest(req *http.Request) {
 	if c.dumpWriter == nil {
 		return
 	}
+	c.dumpMu.Lock()
+	defer c.dumpMu.Unlock()
 
 	dump, err := httputil.DumpRequestOut(req, true)
 	if err != nil {
 		c.logDebug("failed to dump http request", "error", err)
 		return
 	}
-
-	c.writeDump(dump)
+	_, _ = c.dumpWriter.Write(dump)
+	_, _ = c.dumpWriter.Write([]byte("\n"))
 }
 
 func (c *HTTPClient) dumpResponse(resp *http.Response) {
 	if c.dumpWriter == nil {
 		return
 	}
+	c.dumpMu.Lock()
+	defer c.dumpMu.Unlock()
 
 	dump, err := httputil.DumpResponse(resp, true)
 	if err != nil {
 		c.logDebug("failed to dump http response", "error", err)
 		return
 	}
-
-	c.writeDump(dump)
-}
-
-func (c *HTTPClient) writeDump(dump []byte) {
-	c.dumpMu.Lock()
-	defer c.dumpMu.Unlock()
 	_, _ = c.dumpWriter.Write(dump)
 	_, _ = c.dumpWriter.Write([]byte("\n"))
+}
+
+// generateIdempotencyKey generates an RFC 4122 compliant UUIDv4 using crypto/rand.
+func generateIdempotencyKey() (string, error) {
+	var u [16]byte
+	if _, err := io.ReadFull(rand.Reader, u[:]); err != nil {
+		return "", err
+	}
+	u[6] = (u[6] & 0x0f) | 0x40 // Version 4
+	u[8] = (u[8] & 0x3f) | 0x80 // Variant RFC 4122
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", u[0:4], u[4:6], u[6:8], u[8:10], u[10:16]), nil
 }

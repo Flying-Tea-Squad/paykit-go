@@ -17,7 +17,9 @@ type AccessTokenProvider interface {
 
 // Client sends requests to the M-Pesa API.
 type Client struct {
-	baseURL      string
+	baseURL string
+	// httpClient is held as an unexported pointer rather than embedded to encapsulate transport
+	// methods, avoid copying internal mutexes, and share connection pools with token managers.
 	httpClient   *paykit.HTTPClient
 	passkey      string
 	tokenManager AccessTokenProvider
@@ -78,7 +80,9 @@ func (c *Client) STKPush(ctx context.Context, req STKPushRequest) (*STKPushRespo
 
 	httpReq.Header.Set("Authorization", "Bearer "+token)
 
-	httpReq.Header.Set("Idempotency-Key", req.IdempotencyKey)
+	if req.IdempotencyKey != "" {
+		httpReq.Header.Set("Idempotency-Key", req.IdempotencyKey)
+	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
 

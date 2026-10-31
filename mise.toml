@@ -2,6 +2,9 @@
 go = "1.25"
 golangci-lint = "2.12"
 "go:golang.org/x/tools/cmd/goimports" = { version = "v0.48", depends = "go" }
+prettier = "3.9"
+shellcheck = "0.11"
+shfmt = "3.13"
 
 [tasks.setup]
 description = "Install all development and compatibility toolchains"
@@ -23,18 +26,18 @@ tools.go = "1.22"
 env.GOTOOLCHAIN = "local"
 run = "go test ./..."
 
+[tasks.test-dev]
+description = "Test all packages with the development Go version"
+run = "go test ./..."
+
 [tasks.vet]
 description = "Vet all packages with the minimum supported Go version"
 tools.go = "1.22"
 env.GOTOOLCHAIN = "local"
 run = "go vet ./..."
 
-[tasks.test-dev]
-description = "Test all packages with the development Go version"
-run = "go test ./..."
-
 [tasks.format-check]
-description = "Check Go formatting and imports"
+description = "Check Go formatting and imports without modifying files"
 run = '''
 files="$(goimports -l .)"
 if [ -n "$files" ]; then
@@ -49,20 +52,78 @@ description = "Format Go source files and imports"
 run = "goimports -w ."
 
 [tasks.lint-check]
-description = "Check the code with golangci-lint"
+description = "Check Go code with golangci-lint"
 run = "golangci-lint run ./..."
 
-[tasks.lint]
-description = "Apply fixes supported by golangci-lint"
-run = "golangci-lint run --fix ./..."
+[tasks."sh:format-check"]
+description = "Check shell scripts formatting with shfmt"
+run = '''
+files="$(git ls-files '*.sh')"
+if [ -n "$files" ]; then
+  shfmt -d $files
+fi
+'''
 
-[tasks.ci]
-description = "Run all continuous integration checks"
+[tasks."sh:format"]
+description = "Format shell scripts with shfmt"
+run = '''
+files="$(git ls-files '*.sh')"
+if [ -n "$files" ]; then
+  shfmt -w $files
+fi
+'''
+
+[tasks."sh:lint-check"]
+description = "Lint shell scripts with shellcheck"
+run = '''
+files="$(git ls-files '*.sh')"
+if [ -n "$files" ]; then
+  shellcheck $files
+fi
+'''
+
+[tasks."markdown:format-check"]
+description = "Check markdown formatting with prettier"
+run = "git ls-files '*.md' | xargs prettier --check"
+
+[tasks."markdown:format"]
+description = "Format markdown documentation with prettier"
+run = "git ls-files '*.md' | xargs prettier --write"
+
+[tasks.check]
+description = "Perform all static checks across all modules and files"
 depends = [
-  "build",
-  "test",
-  "test-dev",
   "vet",
   "format-check",
   "lint-check",
+  "sh:format-check",
+  "sh:lint-check",
+  "markdown:format-check",
 ]
+
+[tasks.ci]
+description = "Run all continuous integration checks (build, check, test)"
+depends = [
+  "build",
+  "check",
+  "test",
+  "test-dev",
+]
+
+[tasks.lint]
+alias = ["fix"]
+description = "Run all formatters and autofix linters across Go, shell, and markdown"
+run = """
+mise run format
+mise run sh:format
+mise run sh:lint-check
+mise run markdown:format
+golangci-lint run --fix ./...
+"""
+
+[tasks.pre-push]
+description = "Run all formatters and linters, then execute CI checks"
+run = """
+mise run lint
+mise run ci
+"""

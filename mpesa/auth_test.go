@@ -10,13 +10,15 @@ import (
 	"testing"
 	"time"
 
-	paykit "github.com/Flying-Tea-Squad/paykit-go"
+	"github.com/Flying-Tea-Squad/paykit-go"
 )
 
 // testHTTPClient wraps a test-server *http.Client into *paykit.HTTPClient
 // so it uses the test server's TLS certificates and connection.
 func testHTTPClient(c *http.Client) *paykit.HTTPClient {
-	hc := paykit.NewHTTPClient(paykit.HTTPClientConfig{})
+	hc := paykit.NewHTTPClient(paykit.HTTPClientConfig{
+		IdempotencyPolicy: paykit.IdempotencyPolicyAutoGenerate,
+	})
 	hc.SetTransport(c.Transport)
 	return hc
 }

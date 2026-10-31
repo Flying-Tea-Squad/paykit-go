@@ -113,6 +113,7 @@ func TestHTTPClientDumpWriterAndLogger(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
+	req.Header.Set("Idempotency-Key", "dump-logger-key")
 
 	resp, err := client.Do(context.Background(), req)
 	if err != nil {
@@ -192,7 +193,10 @@ func TestHTTPClientNonIdempotentMethodNotRetried(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewHTTPClient(HTTPClientConfig{RetryBaseDelay: time.Nanosecond})
+			client := NewHTTPClient(HTTPClientConfig{
+				IdempotencyPolicy: IdempotencyPolicyOptional,
+				RetryBaseDelay:    time.Nanosecond,
+			})
 			req, err := http.NewRequest(method, server.URL, nil)
 			if err != nil {
 				t.Fatalf("new request: %v", err)
@@ -280,14 +284,18 @@ func TestHTTPClient429WithRetryAfterRetries(t *testing.T) {
 	}
 }
 
-// TestHTTPClient429WithoutRetryAfterErrors verifies that a 429 with no
-// Retry-After header results in an immediate error rather than a blind retry.
-func TestHTTPClient429WithoutRetryAfterErrors(t *testing.T) {
+// TestHTTPClient429WithoutRetryAfterRetries verifies that a 429 with no
+// Retry-After header falls back to retry with backoff rather than failing immediately.
+func TestHTTPClient429WithoutRetryAfterRetries(t *testing.T) {
 	var attempts atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		attempts.Add(1)
-		// Intentionally omit Retry-After.
-		http.Error(w, "rate limited", http.StatusTooManyRequests)
+		if attempts.Add(1) < 2 {
+			// Intentionally omit Retry-After.
+			http.Error(w, "rate limited", http.StatusTooManyRequests)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, "ok")
 	}))
 	defer server.Close()
 
@@ -297,15 +305,16 @@ func TestHTTPClient429WithoutRetryAfterErrors(t *testing.T) {
 		t.Fatalf("new request: %v", err)
 	}
 
-	_, err = client.Do(context.Background(), req)
-	if err == nil {
-		t.Fatal("expected error for 429 without Retry-After, got nil")
+	resp, err := client.Do(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error for 429 without Retry-After: %v", err)
 	}
-	if !strings.Contains(err.Error(), "no Retry-After") {
-		t.Fatalf("unexpected error message: %v", err)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	if attempts.Load() != 1 {
-		t.Fatalf("expected exactly 1 attempt, got %d", attempts.Load())
+	if attempts.Load() != 2 {
+		t.Fatalf("expected 2 attempts, got %d", attempts.Load())
 	}
 }
 
@@ -447,7 +456,10 @@ func TestHTTPClientConcurrentDumpWriter(t *testing.T) {
 	}))
 	defer server.Close()
 	var dump bytes.Buffer
-	client := NewHTTPClient(HTTPClientConfig{DumpWriter: &dump})
+	client := NewHTTPClient(HTTPClientConfig{
+		DumpWriter:        &dump,
+		IdempotencyPolicy: IdempotencyPolicyAutoGenerate,
+	})
 	const requests = 20
 	var wg sync.WaitGroup
 	start := make(chan struct{})
