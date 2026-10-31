@@ -135,7 +135,7 @@ paykit-go/
 ├── gateway/          # Provider registry and gateway abstractions
 ├── bogus/            # Test gateway implementation
 ├── mpesa/            # Safaricom M-Pesa provider adapter and client
-├── airtelmoney/      # Airtel Money provider adapter and client
+├── airtel/           # Airtel Money provider adapter and client
 ├── pesapal/          # Pesapal provider adapter and client
 ├── callback/         # Shared webhook and callback parsing/verification utilities
 ├── driver/           # Import-all entrypoint for drivers
@@ -161,7 +161,7 @@ Refer to [ADR 0001: Capability-Based Interface Architecture](docs/adr/0001-capab
 ### Package Design & Naming
 
 - **Shallow Nesting**: Avoid deep package hierarchies (e.g., avoid `internal/transport/http/client/v1`). Keep the package layout shallow, clean, and flat (maximum 1–2 levels deep).
-- **Idiomatic Naming**: Use short, lowercase, single-word package names (`paykit`, `mpesa`, `airtelmoney`, `pesapal`, `gateway`). Never use underscores, dashes, or mixedCaps in package names.
+- **Idiomatic Naming**: Use short, lowercase, single-word package names (`paykit`, `mpesa`, `airtel`, `pesapal`, `gateway`). Never use underscores, dashes, or mixedCaps in package names.
 - **No Stutter**: Avoid redundant names where the package name repeats the enclosing directory or type (e.g., avoid `transport.TransportClient` or `client.ClientConfig`).
 
 ### Cross-Package Exported Symbol Documentation
@@ -222,7 +222,7 @@ Common types include:
 
 Common scopes include:
 
-- `mpesa`, `airtelmoney`, `pesapal`, `gateway`, `callback`, `http`, `core`, `types`.
+- `mpesa`, `airtel`, `pesapal`, `gateway`, `callback`, `http`, `core`, `types`.
 
 Examples:
 
