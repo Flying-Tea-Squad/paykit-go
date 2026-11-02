@@ -1,0 +1,275 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>callback: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/Flying-Tea-Squad/paykit-go/callback/verifier.go (90.9%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package callback
+
+import (
+        "crypto"
+        "crypto/hmac"
+        "crypto/rsa"
+        "crypto/subtle"
+        "crypto/x509"
+        "encoding/pem"
+        "errors"
+        "net"
+        "strings"
+)
+
+// ============================================================================
+// HMAC Verification (timing-safe)
+// ============================================================================
+
+// VerifyHMAC verifies an HMAC signature using the specified hash function.
+// signature and secret are hex-encoded strings.
+// Returns nil on success, error on mismatch or invalid input.
+func VerifyHMAC(payload []byte, signature, secret string, h crypto.Hash) error <span class="cov8" title="1">{
+        if len(payload) == 0 || signature == "" || secret == "" </span><span class="cov8" title="1">{
+                return errors.New("callback: missing payload, signature, or secret")
+        }</span>
+
+        <span class="cov8" title="1">mac := hmac.New(h.New, []byte(secret))
+        mac.Write(payload)
+        expected := mac.Sum(nil)
+
+        sigBytes, err := decodeHex(signature)
+        if err != nil </span><span class="cov8" title="1">{
+                return errors.New("callback: invalid signature hex encoding")
+        }</span>
+
+        <span class="cov8" title="1">if subtle.ConstantTimeCompare(sigBytes, expected) != 1 </span><span class="cov8" title="1">{
+                return errors.New("callback: signature mismatch")
+        }</span>
+        <span class="cov8" title="1">return nil</span>
+}
+
+// VerifyHMACSHA256 verifies HMAC-SHA256 signature (hex-encoded).
+func VerifyHMACSHA256(payload []byte, signature, secret string) error <span class="cov8" title="1">{
+        return VerifyHMAC(payload, signature, secret, crypto.SHA256)
+}</span>
+
+// VerifyHMACSHA512 verifies HMAC-SHA512 signature (hex-encoded).
+func VerifyHMACSHA512(payload []byte, signature, secret string) error <span class="cov8" title="1">{
+        return VerifyHMAC(payload, signature, secret, crypto.SHA512)
+}</span>
+
+// ============================================================================
+// RSA Verification (PSS default, PKCS#1 v1.5 optional)
+// ============================================================================
+
+type RSAPadding int
+
+const (
+        RSAPaddingPSS RSAPadding = iota
+        RSAPaddingPKCS1v15
+)
+
+type RSAVerifyOptions struct {
+        Padding RSAPadding
+        Hash    crypto.Hash
+}
+
+// VerifyRSAPublicKey verifies an RSA signature using a PEM-encoded public key.
+// signature is raw bytes (not hex). publicKeyPEM is PKIX PEM format.
+// opts can be nil for defaults (PSS + SHA256).
+// The payload is hashed using the specified hash function before verification.
+func VerifyRSAPublicKey(payload, signature []byte, publicKeyPEM string, opts *RSAVerifyOptions) error <span class="cov8" title="1">{
+        if len(payload) == 0 || len(signature) == 0 || publicKeyPEM == "" </span><span class="cov8" title="1">{
+                return errors.New("callback: missing payload, signature, or public key")
+        }</span>
+
+        <span class="cov8" title="1">block, _ := pem.Decode([]byte(publicKeyPEM))
+        if block == nil || block.Type != "PUBLIC KEY" </span><span class="cov8" title="1">{
+                return errors.New("callback: invalid PEM public key")
+        }</span>
+
+        <span class="cov8" title="1">pubKey, err := x509.ParsePKIXPublicKey(block.Bytes)
+        if err != nil </span><span class="cov0" title="0">{
+                return errors.New("callback: failed to parse public key")
+        }</span>
+
+        <span class="cov8" title="1">rsaPub, ok := pubKey.(*rsa.PublicKey)
+        if !ok </span><span class="cov0" title="0">{
+                return errors.New("callback: not an RSA public key")
+        }</span>
+
+        <span class="cov8" title="1">h := crypto.SHA256
+        padding := RSAPaddingPSS
+        if opts != nil </span><span class="cov8" title="1">{
+                if opts.Hash != 0 </span><span class="cov8" title="1">{
+                        h = opts.Hash
+                }</span>
+                <span class="cov8" title="1">padding = opts.Padding</span>
+        }
+
+        <span class="cov8" title="1">hasher := h.New()
+        hasher.Write(payload)
+        hashedPayload := hasher.Sum(nil)
+
+        if padding == RSAPaddingPSS </span><span class="cov8" title="1">{
+                return rsa.VerifyPSS(rsaPub, h, hashedPayload, signature, nil)
+        }</span>
+        <span class="cov8" title="1">return rsa.VerifyPKCS1v15(rsaPub, h, hashedPayload, signature)</span>
+}
+
+// ============================================================================
+// Safaricom Daraja IP Whitelist
+// ============================================================================
+
+// SafaricomCIDRs contains the CIDR ranges for Safaricom Daraja callback servers.
+// Override in tests or for future range changes.
+var SafaricomCIDRs = []string{
+        "196.201.214.0/24",
+        "196.201.213.0/24",
+        "196.201.212.0/24",
+}
+
+// VerifySafaricomIP returns true if remoteIP matches any SafaricomCIDRs.
+// remoteIP should be the client IP from r.RemoteAddr (host only, no port).
+func VerifySafaricomIP(remoteIP string) bool <span class="cov8" title="1">{
+        ip := net.ParseIP(remoteIP)
+        if ip == nil </span><span class="cov8" title="1">{
+                return false
+        }</span>
+        <span class="cov8" title="1">for _, cidr := range SafaricomCIDRs </span><span class="cov8" title="1">{
+                _, network, err := net.ParseCIDR(cidr)
+                if err == nil &amp;&amp; network.Contains(ip) </span><span class="cov8" title="1">{
+                        return true
+                }</span>
+        }
+        <span class="cov8" title="1">return false</span>
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+func decodeHex(s string) ([]byte, error) <span class="cov8" title="1">{
+        s = strings.TrimSpace(s)
+        if len(s)%2 != 0 </span><span class="cov8" title="1">{
+                return nil, errors.New("odd length")
+        }</span>
+        <span class="cov8" title="1">b := make([]byte, len(s)/2)
+        for i := 0; i &lt; len(s); i += 2 </span><span class="cov8" title="1">{
+                var v byte
+                if s[i] &gt;= '0' &amp;&amp; s[i] &lt;= '9' </span><span class="cov8" title="1">{
+                        v = (s[i] - '0') &lt;&lt; 4
+                }</span> else<span class="cov8" title="1"> if s[i] &gt;= 'a' &amp;&amp; s[i] &lt;= 'f' </span><span class="cov8" title="1">{
+                        v = (s[i] - 'a' + 10) &lt;&lt; 4
+                }</span> else<span class="cov8" title="1"> if s[i] &gt;= 'A' &amp;&amp; s[i] &lt;= 'F' </span><span class="cov0" title="0">{
+                        v = (s[i] - 'A' + 10) &lt;&lt; 4
+                }</span> else<span class="cov8" title="1"> {
+                        return nil, errors.New("invalid hex")
+                }</span>
+                <span class="cov8" title="1">if s[i+1] &gt;= '0' &amp;&amp; s[i+1] &lt;= '9' </span><span class="cov8" title="1">{
+                        v |= s[i+1] - '0'
+                }</span> else<span class="cov8" title="1"> if s[i+1] &gt;= 'a' &amp;&amp; s[i+1] &lt;= 'f' </span><span class="cov8" title="1">{
+                        v |= s[i+1] - 'a' + 10
+                }</span> else<span class="cov0" title="0"> if s[i+1] &gt;= 'A' &amp;&amp; s[i+1] &lt;= 'F' </span><span class="cov0" title="0">{
+                        v |= s[i+1] - 'A' + 10
+                }</span> else<span class="cov0" title="0"> {
+                        return nil, errors.New("invalid hex")
+                }</span>
+                <span class="cov8" title="1">b[i/2] = v</span>
+        }
+        <span class="cov8" title="1">return b, nil</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

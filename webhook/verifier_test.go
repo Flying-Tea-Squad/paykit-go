@@ -1,4 +1,4 @@
-package callback
+package webhook
 
 import (
 	"crypto"
@@ -46,9 +46,9 @@ func TestVerifyHMACSHA256_RFC4231(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			keyBytes, _ := hex.DecodeString(tt.key)
 			dataBytes, _ := hex.DecodeString(tt.data)
-			err := VerifyHMACSHA256(dataBytes, tt.signature, string(keyBytes))
-			if err != nil {
-				t.Fatalf("VerifyHMACSHA256() error = %v, want nil", err)
+			ok := VerifyHMACSHA256(dataBytes, tt.signature, string(keyBytes))
+			if !ok {
+				t.Fatalf("VerifyHMACSHA256() = false, want true")
 			}
 		})
 	}
@@ -62,14 +62,14 @@ func TestVerifyHMACSHA256_PesapalStyle(t *testing.T) {
 	mac.Write(payload)
 	expectedSig := hex.EncodeToString(mac.Sum(nil))
 
-	err := VerifyHMACSHA256(payload, expectedSig, secret)
-	if err != nil {
-		t.Fatalf("VerifyHMACSHA256() with correct signature error = %v", err)
+	ok := VerifyHMACSHA256(payload, expectedSig, secret)
+	if !ok {
+		t.Fatalf("VerifyHMACSHA256() with correct signature = false, want true")
 	}
 
-	err = VerifyHMACSHA256(payload, "wrongsignature", secret)
-	if err == nil {
-		t.Fatal("VerifyHMACSHA256() with wrong signature should fail")
+	ok = VerifyHMACSHA256(payload, "wrongsignature", secret)
+	if ok {
+		t.Fatal("VerifyHMACSHA256() with wrong signature = true, want false")
 	}
 }
 
@@ -83,9 +83,9 @@ func TestVerifyHMACSHA512_RFC4231(t *testing.T) {
 	mac.Write(dataBytes)
 	sig := hex.EncodeToString(mac.Sum(nil))
 
-	err := VerifyHMACSHA512(dataBytes, sig, string(keyBytes))
-	if err != nil {
-		t.Fatalf("VerifyHMACSHA512() error = %v", err)
+	ok := VerifyHMACSHA512(dataBytes, sig, string(keyBytes))
+	if !ok {
+		t.Fatalf("VerifyHMACSHA512() = false, want true")
 	}
 }
 
@@ -95,27 +95,24 @@ func TestVerifyHMAC_EdgeCases(t *testing.T) {
 		payload   []byte
 		signature string
 		secret    string
-		wantError bool
+		wantOK    bool
 	}{
-		{"empty payload", []byte{}, "abc", "secret", true},
-		{"empty signature", []byte("data"), "", "secret", true},
-		{"empty secret", []byte("data"), "abc", "", true},
-		{"invalid hex signature", []byte("data"), "zzzz", "secret", true},
-		{"odd length hex", []byte("data"), "abc", "secret", true},
-		{"wrong secret", []byte("data"), "abcdef", "secret", true},
-		{"nil payload", nil, "abcdef", "secret", true},
-		{"invalid hex first char", []byte("data"), "g0", "secret", true},
-		{"invalid hex second char", []byte("data"), "0g", "secret", true},
+		{"empty payload", []byte{}, "abc", "secret", false},
+		{"empty signature", []byte("data"), "", "secret", false},
+		{"empty secret", []byte("data"), "abc", "", false},
+		{"invalid hex signature", []byte("data"), "zzzz", "secret", false},
+		{"odd length hex", []byte("data"), "abc", "secret", false},
+		{"wrong secret", []byte("data"), "abcdef", "secret", false},
+		{"nil payload", nil, "abcdef", "secret", false},
+		{"invalid hex first char", []byte("data"), "g0", "secret", false},
+		{"invalid hex second char", []byte("data"), "0g", "secret", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := VerifyHMACSHA256(tt.payload, tt.signature, tt.secret)
-			if tt.wantError && err == nil {
-				t.Fatalf("expected error but got nil")
-			}
-			if !tt.wantError && err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			ok := VerifyHMACSHA256(tt.payload, tt.signature, tt.secret)
+			if ok != tt.wantOK {
+				t.Fatalf("VerifyHMACSHA256() = %v, want %v", ok, tt.wantOK)
 			}
 		})
 	}
@@ -134,13 +131,13 @@ func TestVerifyHMAC_ConstantTime(t *testing.T) {
 		wrongSig = correctSig[:len(correctSig)-1] + "1"
 	}
 
-	err1 := VerifyHMACSHA256(payload, correctSig, secret)
-	err2 := VerifyHMACSHA256(payload, wrongSig, secret)
+	ok1 := VerifyHMACSHA256(payload, correctSig, secret)
+	ok2 := VerifyHMACSHA256(payload, wrongSig, secret)
 
-	if err1 != nil {
-		t.Fatalf("correct signature should pass: %v", err1)
+	if !ok1 {
+		t.Fatalf("correct signature should pass")
 	}
-	if err2 == nil {
+	if ok2 {
 		t.Fatal("wrong signature should fail")
 	}
 }
@@ -174,7 +171,7 @@ func TestVerifyRSAPublicKey_PSS(t *testing.T) {
 		t.Fatalf("failed to sign: %v", err)
 	}
 
-	err = VerifyRSAPublicKey(payload, sig, pubPEM, nil)
+	err = VerifyRSAPublicKey(payload, sig, pubPEM)
 	if err != nil {
 		t.Fatalf("VerifyRSAPublicKey() with PSS error = %v", err)
 	}
@@ -190,7 +187,7 @@ func TestVerifyRSAPublicKey_PKCS1v15(t *testing.T) {
 		t.Fatalf("failed to sign: %v", err)
 	}
 
-	opts := &RSAVerifyOptions{Padding: RSAPaddingPKCS1v15}
+	opts := RSAVerifyOptions{Padding: RSAPaddingPKCS1v15}
 	err = VerifyRSAPublicKey(payload, sig, pubPEM, opts)
 	if err != nil {
 		t.Fatalf("VerifyRSAPublicKey() with PKCS1v15 error = %v", err)
@@ -220,7 +217,7 @@ func TestVerifyRSAPublicKey_CrossPaddingFails(t *testing.T) {
 	hashed := sha256.Sum256(payload)
 	pssSig, _ := rsa.SignPSS(rand.Reader, privateKey, crypto.SHA256, hashed[:], nil)
 
-	opts := &RSAVerifyOptions{Padding: RSAPaddingPKCS1v15}
+	opts := RSAVerifyOptions{Padding: RSAPaddingPKCS1v15}
 	err := VerifyRSAPublicKey(payload, pssSig, pubPEM, opts)
 	if err == nil {
 		t.Fatal("PKCS1v15 verification of PSS signature should fail")
@@ -239,7 +236,7 @@ func TestVerifyRSAPublicKey_Errors(t *testing.T) {
 		payload      []byte
 		signature    []byte
 		publicKeyPEM string
-		opts         *RSAVerifyOptions
+		opts         []RSAVerifyOptions
 	}{
 		{"empty payload", nil, sig, pubPEM, nil},
 		{"empty signature", payload, nil, pubPEM, nil},
@@ -248,12 +245,12 @@ func TestVerifyRSAPublicKey_Errors(t *testing.T) {
 		{"wrong key type", payload, sig, "-----BEGIN PRIVATE KEY-----\ninvalid\n-----END PRIVATE KEY-----", nil},
 		{"invalid PKIX bytes", payload, sig, encodePEM("PUBLIC KEY", []byte{0x01, 0x02, 0x03}), nil},
 		{"non-RSA public key", payload, sig, generateECDSAPublicKeyPEM(t), nil},
-		{"wrong hash", payload, sig, pubPEM, &RSAVerifyOptions{Hash: crypto.SHA512}},
+		{"wrong hash", payload, sig, pubPEM, []RSAVerifyOptions{{Hash: crypto.SHA512}}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := VerifyRSAPublicKey(tt.payload, tt.signature, tt.publicKeyPEM, tt.opts)
+			err := VerifyRSAPublicKey(tt.payload, tt.signature, tt.publicKeyPEM, tt.opts...)
 			if err == nil {
 				t.Fatalf("expected error but got nil")
 			}
@@ -267,6 +264,23 @@ func TestVerifySafaricomIP_Production(t *testing.T) {
 		"196.201.214.254",
 		"196.201.213.100",
 		"196.201.212.50",
+	}
+
+	for _, ip := range validIPs {
+		t.Run(ip, func(t *testing.T) {
+			if !VerifySafaricomIP(ip) {
+				t.Errorf("VerifySafaricomIP(%s) = false, want true", ip)
+			}
+		})
+	}
+}
+
+func TestVerifySafaricomIP_WithPort(t *testing.T) {
+	validIPs := []string{
+		"196.201.214.1:43212",
+		"196.201.214.254:8080",
+		"196.201.213.100:5000",
+		"196.201.212.50:3000",
 	}
 
 	for _, ip := range validIPs {
@@ -301,10 +315,15 @@ func TestVerifySafaricomIP_Invalid(t *testing.T) {
 }
 
 func TestSafaricomCIDRs_Override(t *testing.T) {
-	original := SafaricomCIDRs
-	defer func() { SafaricomCIDRs = original }()
+	originalCIDRs := []string{
+		"196.201.214.0/24",
+		"196.201.213.0/24",
+		"196.201.212.0/24",
+	}
+	// Restore original after test
+	defer SetAllowedCIDRs(originalCIDRs)
 
-	SafaricomCIDRs = []string{"10.0.0.0/8"}
+	SetAllowedCIDRs([]string{"10.0.0.0/8"})
 
 	if !VerifySafaricomIP("10.1.2.3") {
 		t.Error("VerifySafaricomIP should work with overridden CIDRs")
@@ -312,5 +331,24 @@ func TestSafaricomCIDRs_Override(t *testing.T) {
 
 	if VerifySafaricomIP("192.168.1.1") {
 		t.Error("VerifySafaricomIP should reject IPs outside overridden CIDRs")
+	}
+}
+
+func TestIPVerifierConfig_ThreadSafety(t *testing.T) {
+	cfg := &IPVerifierConfig{}
+	WithAllowedCIDRs([]string{"10.0.0.0/8"})(cfg)
+
+	done := make(chan bool)
+	for i := 0; i < 100; i++ {
+		go func() {
+			for j := 0; j < 100; j++ {
+				_ = cfg.Verify("10.1.2.3")
+				_ = cfg.Verify("192.168.1.1")
+			}
+			done <- true
+		}()
+	}
+	for i := 0; i < 100; i++ {
+		<-done
 	}
 }
