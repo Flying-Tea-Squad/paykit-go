@@ -103,7 +103,7 @@ func TestWebhookReceiver_TableDrivenScenarios(t *testing.T) {
 			requestBody:        `{"OrderNotificationType":"IPNCHANGE","OrderTrackingId":"pesapal_trk_123"}`,
 			expectedStatusCode: http.StatusOK,
 			expectedHeader:     map[string]string{"Content-Type": "application/json"},
-			expectedJSONBody:   `{"status":"200","message":"OK"}`,
+			expectedJSONBody:   `{"orderNotificationType":"IPNCHANGE","orderTrackingId":"txn_test_123","orderMerchantReference":"","status":200}`,
 			validateEvent: func(t *testing.T, evt *paykit.Event) {
 				assert.Equal(t, "pesapal", evt.Provider)
 			},
@@ -119,17 +119,18 @@ func TestWebhookReceiver_TableDrivenScenarios(t *testing.T) {
 			expectedJSONBody:   `{"status":"success","message":"Webhook processed successfully"}`,
 		},
 		{
-			name:               "Invalid cryptographic signature rejected with HTTP 400",
+			name:               "Invalid cryptographic signature rejected with HTTP 400 and sanitized message",
 			providerRoute:      "mpesa",
 			method:             http.MethodPost,
 			requestPath:        "/webhooks/mpesa",
 			requestBody:        `{"Body":{"stkCallback":{"ResultCode":0}}}`,
-			handlerError:       errors.New("invalid signature: HMAC verification failed"),
+			handlerError:       errors.New("invalid signature: HMAC verification failed with private key leak"),
 			expectedStatusCode: http.StatusBadRequest,
 			expectedHeader:     map[string]string{"Content-Type": "application/json"},
+			expectedJSONBody:   `{"error":"invalid webhook payload or signature"}`,
 		},
 		{
-			name:               "Malformed JSON payload rejected with HTTP 400",
+			name:               "Malformed JSON payload rejected with HTTP 400 and sanitized message",
 			providerRoute:      "mpesa",
 			method:             http.MethodPost,
 			requestPath:        "/webhooks/mpesa",
@@ -137,6 +138,7 @@ func TestWebhookReceiver_TableDrivenScenarios(t *testing.T) {
 			handlerError:       errors.New("unexpected EOF"),
 			expectedStatusCode: http.StatusBadRequest,
 			expectedHeader:     map[string]string{"Content-Type": "application/json"},
+			expectedJSONBody:   `{"error":"invalid webhook payload or signature"}`,
 		},
 		{
 			name:               "Route mismatch / unregistered provider returns HTTP 404",
@@ -316,4 +318,26 @@ func TestWebhookReceiver_FrameworkAdapterPatterns(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.True(t, called)
+}
+
+func TestWebhookReceiver_PayloadTooLargeReturns413(t *testing.T) {
+	routes := map[string]paykit.WebhookHandler{
+		"mpesa": &mockGatewayWebhookHandler{provider: "mpesa"},
+	}
+
+	rcv := webhook.NewReceiver(routes, nil, webhook.WithMaxBodyBytes(128))
+	server := httptest.NewServer(rcv)
+	defer server.Close()
+
+	oversized := bytes.Repeat([]byte("a"), 256)
+	resp, err := http.Post(server.URL+"/webhooks/mpesa", "application/json", bytes.NewReader(oversized))
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	assert.Equal(t, http.StatusRequestEntityTooLarge, resp.StatusCode)
+	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
+
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), "exceeds maximum limit")
 }

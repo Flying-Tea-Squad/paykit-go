@@ -157,6 +157,24 @@ func TestReceiver_ResolveProvider_PathNormalization(t *testing.T) {
 			expected: "airtel",
 		},
 		{
+			name:     "path prefix boundary prevents partial match",
+			path:     "/webhooks_evil/mpesa",
+			prefix:   "/webhooks",
+			expected: "",
+		},
+		{
+			name:     "path prefix boundary prevents hyphenated match",
+			path:     "/webhooks-test/mpesa",
+			prefix:   "/webhooks",
+			expected: "",
+		},
+		{
+			name:     "path outside configured prefix is rejected",
+			path:     "/other/prefix/mpesa",
+			prefix:   "/webhooks",
+			expected: "",
+		},
+		{
 			name:     "empty root path",
 			path:     "/",
 			expected: "",
@@ -229,7 +247,15 @@ func TestReceiver_BodyLimitAndReplay(t *testing.T) {
 	reqOver := httptest.NewRequest(http.MethodPost, "/webhooks/mpesa", bytes.NewReader(oversizedPayload))
 	_, err = rcv.readAndBufferPayload(reqOver)
 	require.Error(t, err)
+	assert.True(t, errors.Is(err, ErrPayloadTooLarge))
 	assert.Contains(t, err.Error(), "exceeds maximum limit")
+
+	// Verify ServeHTTP returns 413 Request Entity Too Large on oversized payload
+	reqOverServe := httptest.NewRequest(http.MethodPost, "/webhooks/mpesa", bytes.NewReader(oversizedPayload))
+	wOver := httptest.NewRecorder()
+	rcv.ServeHTTP(wOver, reqOverServe)
+	assert.Equal(t, http.StatusRequestEntityTooLarge, wOver.Code)
+	assert.Contains(t, wOver.Body.String(), "exceeds maximum limit")
 
 	// Nil body check
 	reqNil := httptest.NewRequest(http.MethodPost, "/webhooks/mpesa", nil)
@@ -247,7 +273,7 @@ func TestReceiver_WithMaxBodyBytes_ZeroOrNegativeFallback(t *testing.T) {
 	assert.Equal(t, int64(DefaultMaxBodyBytes), rcvNegative.maxBodyBytes)
 }
 
-func TestReceiver_HandlerAcknowledgerTakesPrecedence(t *testing.T) {
+func TestReceiver_HandlerAcknowledgerInvoked(t *testing.T) {
 	ackHandler := &dummyAcknowledgerHandler{}
 	rcv := NewReceiver(
 		map[string]paykit.WebhookHandler{"mpesa": ackHandler},
@@ -262,6 +288,33 @@ func TestReceiver_HandlerAcknowledgerTakesPrecedence(t *testing.T) {
 	assert.True(t, ackHandler.ackCalled)
 	assert.Equal(t, "true", w.Header().Get("X-Custom-Ack"))
 	assert.JSONEq(t, `{"custom":true}`, w.Body.String())
+}
+
+func TestReceiver_WithAcknowledgerOverridesHandlerAcknowledger(t *testing.T) {
+	ackHandler := &dummyAcknowledgerHandler{}
+	customAckCalled := false
+	customAck := AcknowledgeFunc(func(w http.ResponseWriter, _ *http.Request, _ *paykit.Event) error {
+		customAckCalled = true
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"override":true}`))
+		return nil
+	})
+
+	rcv := NewReceiver(
+		map[string]paykit.WebhookHandler{"mpesa": ackHandler},
+		nil,
+		WithAcknowledger("mpesa", customAck),
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/webhooks/mpesa", bytes.NewReader([]byte(`{"hello":"world"}`)))
+	w := httptest.NewRecorder()
+
+	rcv.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.True(t, customAckCalled)
+	assert.False(t, ackHandler.ackCalled, "handler Acknowledger should not be called when custom option is present")
+	assert.JSONEq(t, `{"override":true}`, w.Body.String())
 }
 
 func TestReceiver_WithCustomAcknowledgerOption(t *testing.T) {
