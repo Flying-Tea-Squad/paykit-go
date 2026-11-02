@@ -26,6 +26,25 @@ const (
 	EventC2BReceived EventType = "c2b.received"
 )
 
+// String returns the string representation of the event type.
+func (t EventType) String() string {
+	return string(t)
+}
+
+// IsValid reports whether the event type is one of the recognized standard event types.
+func (t EventType) IsValid() bool {
+	switch t {
+	case EventChargeCompleted,
+		EventChargeFailed,
+		EventDisbursementCompleted,
+		EventDisbursementFailed,
+		EventC2BReceived:
+		return true
+	default:
+		return false
+	}
+}
+
 // Event represents a normalized, provider-agnostic asynchronous payment notification
 // produced by implementations of the WebhookHandler interface.
 type Event struct {
@@ -45,13 +64,13 @@ type Event struct {
 	Reference string `json:"reference,omitempty"`
 
 	// Amount is the transferred sum expressed in minor units with an ISO-4217 currency.
-	Amount Money `json:"amount"`
+	Amount Money `json:"amount,omitempty"`
 
 	// Phone is the customer or recipient MSISDN normalized to E.164.
 	Phone string `json:"phone,omitempty"`
 
 	// Timestamp is the recorded settlement time reported by the provider.
-	Timestamp time.Time `json:"timestamp"`
+	Timestamp time.Time `json:"timestamp,omitempty"`
 
 	// Status is the normalized transaction state associated with this event.
 	Status TransactionStatus `json:"status,omitempty"`

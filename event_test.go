@@ -1,4 +1,4 @@
-package paykit
+package paykit_test
 
 import (
 	"bytes"
@@ -6,11 +6,27 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Flying-Tea-Squad/paykit-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 var testTime = time.Date(2026, 10, 29, 10, 0, 0, 0, time.UTC)
+
+func TestEventType_StringAndIsValid(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "charge.completed", paykit.EventChargeCompleted.String())
+	assert.True(t, paykit.EventChargeCompleted.IsValid())
+	assert.True(t, paykit.EventC2BReceived.IsValid())
+
+	unknownType := paykit.EventType("refund.processed")
+	assert.Equal(t, "refund.processed", unknownType.String())
+	assert.False(t, unknownType.IsValid())
+
+	emptyType := paykit.EventType("")
+	assert.False(t, emptyType.IsValid())
+}
 
 func TestEvent_HelperMethods(t *testing.T) {
 	t.Parallel()
@@ -18,7 +34,7 @@ func TestEvent_HelperMethods(t *testing.T) {
 	t.Run("nil safety", func(t *testing.T) {
 		t.Parallel()
 
-		var nilEvent *Event
+		var nilEvent *paykit.Event
 
 		assert.False(t, nilEvent.IsSuccess(), "IsSuccess should be false for nil")
 		assert.False(t, nilEvent.IsFailed(), "IsFailed should be false for nil")
@@ -28,7 +44,7 @@ func TestEvent_HelperMethods(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		event          *Event
+		event          *paykit.Event
 		expectSuccess  bool
 		expectFailed   bool
 		expectCharge   bool
@@ -36,51 +52,51 @@ func TestEvent_HelperMethods(t *testing.T) {
 	}{
 		{
 			name:          "charge completed",
-			event:         &Event{Type: EventChargeCompleted, Status: StatusSuccess},
+			event:         &paykit.Event{Type: paykit.EventChargeCompleted, Status: paykit.StatusSuccess},
 			expectSuccess: true,
 			expectCharge:  true,
 		},
 		{
 			name:         "charge failed",
-			event:        &Event{Type: EventChargeFailed, Status: StatusFailed},
+			event:        &paykit.Event{Type: paykit.EventChargeFailed, Status: paykit.StatusFailed},
 			expectFailed: true,
 			expectCharge: true,
 		},
 		{
 			name:           "disbursement completed",
-			event:          &Event{Type: EventDisbursementCompleted, Status: StatusSuccess},
+			event:          &paykit.Event{Type: paykit.EventDisbursementCompleted, Status: paykit.StatusSuccess},
 			expectSuccess:  true,
 			expectDisburse: true,
 		},
 		{
 			name:           "disbursement failed",
-			event:          &Event{Type: EventDisbursementFailed, Status: StatusFailed},
+			event:          &paykit.Event{Type: paykit.EventDisbursementFailed, Status: paykit.StatusFailed},
 			expectFailed:   true,
 			expectDisburse: true,
 		},
 		{
 			name:          "c2b received is neither charge nor disbursement",
-			event:         &Event{Type: EventC2BReceived, Status: StatusSuccess},
+			event:         &paykit.Event{Type: paykit.EventC2BReceived, Status: paykit.StatusSuccess},
 			expectSuccess: true,
 		},
 		{
 			name:          "unknown event type is neither charge nor disbursement",
-			event:         &Event{Type: EventType("refund.processed"), Status: StatusSuccess},
+			event:         &paykit.Event{Type: paykit.EventType("refund.processed"), Status: paykit.StatusSuccess},
 			expectSuccess: true,
 		},
 		{
 			name:          "empty event type is neither charge nor disbursement",
-			event:         &Event{Status: StatusSuccess},
+			event:         &paykit.Event{Status: paykit.StatusSuccess},
 			expectSuccess: true,
 		},
 		{
 			name:         "empty status is neither success nor failure",
-			event:        &Event{Type: EventChargeCompleted},
+			event:        &paykit.Event{Type: paykit.EventChargeCompleted},
 			expectCharge: true,
 		},
 		{
 			name:         "unknown status is neither success nor failure",
-			event:        &Event{Type: EventChargeCompleted, Status: TransactionStatus("processing")},
+			event:        &paykit.Event{Type: paykit.EventChargeCompleted, Status: paykit.TransactionStatus("processing")},
 			expectCharge: true,
 		},
 	}
@@ -105,7 +121,7 @@ func TestEvent_JSONUnmarshal(t *testing.T) {
 		jsonInput   string
 		expectErr   bool
 		assertErr   func(t *testing.T, err error)
-		assertEvent func(t *testing.T, e *Event)
+		assertEvent func(t *testing.T, e *paykit.Event)
 	}{
 		{
 			name: "full valid payload",
@@ -122,17 +138,17 @@ func TestEvent_JSONUnmarshal(t *testing.T) {
 				"raw": {"telco": "data"},
 				"metadata": {"foo": "bar"}
 			}`,
-			assertEvent: func(t *testing.T, e *Event) {
+			assertEvent: func(t *testing.T, e *paykit.Event) {
 				assert.Equal(t, "evt_123", e.ID)
 				assert.Equal(t, "mpesa", e.Provider)
-				assert.Equal(t, EventChargeCompleted, e.Type)
+				assert.Equal(t, paykit.EventChargeCompleted, e.Type)
 				assert.Equal(t, "QKH123", e.TransactionID)
 				assert.Equal(t, "order_1", e.Reference)
 				assert.Equal(t, int64(150000), e.Amount.Amount())
 				assert.Equal(t, "KES", e.Amount.Currency())
 				assert.Equal(t, "254700000000", e.Phone)
 				assert.Equal(t, testTime, e.Timestamp)
-				assert.Equal(t, StatusSuccess, e.Status)
+				assert.Equal(t, paykit.StatusSuccess, e.Status)
 				assert.Equal(t, "bar", e.Metadata["foo"])
 				assertRawJSONEqual(t, e.Raw, `{"telco":"data"}`)
 			},
@@ -145,9 +161,9 @@ func TestEvent_JSONUnmarshal(t *testing.T) {
 				"amount": {"amount": 5000, "currency": "KES"},
 				"timestamp": "2026-10-29T10:00:00Z"
 			}`,
-			assertEvent: func(t *testing.T, e *Event) {
+			assertEvent: func(t *testing.T, e *paykit.Event) {
 				assert.Equal(t, "airtel", e.Provider)
-				assert.Equal(t, EventC2BReceived, e.Type)
+				assert.Equal(t, paykit.EventC2BReceived, e.Type)
 				assert.Equal(t, int64(5000), e.Amount.Amount())
 				assert.Equal(t, "KES", e.Amount.Currency())
 				assert.Equal(t, testTime, e.Timestamp)
@@ -171,7 +187,7 @@ func TestEvent_JSONUnmarshal(t *testing.T) {
 				"raw": null,
 				"metadata": null
 			}`,
-			assertEvent: func(t *testing.T, e *Event) {
+			assertEvent: func(t *testing.T, e *paykit.Event) {
 				assert.Equal(t, json.RawMessage("null"), e.Raw)
 				assert.Nil(t, e.Metadata)
 			},
@@ -184,7 +200,7 @@ func TestEvent_JSONUnmarshal(t *testing.T) {
 		{
 			name:      "missing currency in amount results in empty currency",
 			jsonInput: `{"provider":"mpesa","type":"charge.completed","amount":{"amount":100},"timestamp":"2026-10-29T10:00:00Z"}`,
-			assertEvent: func(t *testing.T, e *Event) {
+			assertEvent: func(t *testing.T, e *paykit.Event) {
 				assert.Equal(t, int64(100), e.Amount.Amount())
 				assert.Empty(t, e.Amount.Currency(), "Money currently accepts missing currencies as empty string")
 			},
@@ -212,9 +228,9 @@ func TestEvent_JSONUnmarshal(t *testing.T) {
 				"timestamp": "2026-10-29T10:00:00Z",
 				"provider_extension": {"foo": "bar"}
 			}`,
-			assertEvent: func(t *testing.T, e *Event) {
+			assertEvent: func(t *testing.T, e *paykit.Event) {
 				assert.Equal(t, "mpesa", e.Provider)
-				assert.Equal(t, EventChargeCompleted, e.Type)
+				assert.Equal(t, paykit.EventChargeCompleted, e.Type)
 			},
 		},
 	}
@@ -223,7 +239,7 @@ func TestEvent_JSONUnmarshal(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			var event Event
+			var event paykit.Event
 			err := json.Unmarshal([]byte(tt.jsonInput), &event)
 
 			if tt.expectErr {
@@ -248,17 +264,17 @@ func TestEvent_JSONMarshal(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		event       *Event
+		event       *paykit.Event
 		wantPresent []string
 		wantAbsent  []string
 		assertJSON  func(t *testing.T, decoded map[string]any)
 	}{
 		{
 			name: "minimal event omits optional fields",
-			event: &Event{
+			event: &paykit.Event{
 				Provider:  "pesapal",
-				Type:      EventDisbursementFailed,
-				Amount:    NewMoney(5000, "KES"),
+				Type:      paykit.EventDisbursementFailed,
+				Amount:    paykit.NewMoney(5000, "KES"),
 				Timestamp: testTime,
 			},
 			wantPresent: []string{"provider", "type", "amount", "timestamp"},
@@ -274,16 +290,16 @@ func TestEvent_JSONMarshal(t *testing.T) {
 		},
 		{
 			name: "populated optional fields are emitted",
-			event: &Event{
+			event: &paykit.Event{
 				ID:            "evt_123",
 				Provider:      "mpesa",
-				Type:          EventChargeCompleted,
+				Type:          paykit.EventChargeCompleted,
 				TransactionID: "QKH123",
 				Reference:     "order_1",
-				Amount:        NewMoney(150000, "KES"),
+				Amount:        paykit.NewMoney(150000, "KES"),
 				Phone:         "254700000000",
 				Timestamp:     testTime,
-				Status:        StatusSuccess,
+				Status:        paykit.StatusSuccess,
 				Raw:           json.RawMessage(`{"signature":"abc123"}`),
 				Metadata:      map[string]any{"foo": "bar"},
 			},
@@ -342,16 +358,16 @@ func TestEvent_JSONMarshal(t *testing.T) {
 func TestEvent_JSONRoundTrip(t *testing.T) {
 	t.Parallel()
 
-	original := &Event{
+	original := &paykit.Event{
 		ID:            "evt_123",
 		Provider:      "mpesa",
-		Type:          EventChargeCompleted,
+		Type:          paykit.EventChargeCompleted,
 		TransactionID: "QKH123",
 		Reference:     "order_1",
-		Amount:        NewMoney(150000, "KES"),
+		Amount:        paykit.NewMoney(150000, "KES"),
 		Phone:         "254700000000",
 		Timestamp:     testTime,
-		Status:        StatusSuccess,
+		Status:        paykit.StatusSuccess,
 		Raw:           json.RawMessage(`{"telco":"data"}`),
 		Metadata:      map[string]any{"foo": "bar"},
 	}
@@ -359,7 +375,7 @@ func TestEvent_JSONRoundTrip(t *testing.T) {
 	data, err := json.Marshal(original)
 	require.NoError(t, err)
 
-	var decoded Event
+	var decoded paykit.Event
 	require.NoError(t, json.Unmarshal(data, &decoded))
 
 	assert.Equal(t, original.ID, decoded.ID)
@@ -388,10 +404,10 @@ func TestEvent_RawPreservesProviderBytes(t *testing.T) {
 	originalBytes := `{"telco": "data", "b": 1, "a": 2}`
 	original := json.RawMessage(originalBytes)
 
-	event := &Event{
+	event := &paykit.Event{
 		Provider:  "mpesa",
-		Type:      EventChargeCompleted,
-		Amount:    NewMoney(100, "KES"),
+		Type:      paykit.EventChargeCompleted,
+		Amount:    paykit.NewMoney(100, "KES"),
 		Timestamp: testTime,
 		Raw:       original,
 	}
@@ -399,7 +415,7 @@ func TestEvent_RawPreservesProviderBytes(t *testing.T) {
 	data, err := json.Marshal(event)
 	require.NoError(t, err)
 
-	var decoded Event
+	var decoded paykit.Event
 	require.NoError(t, json.Unmarshal(data, &decoded))
 
 	// Go's encoding/json preserves key order but may strip whitespace.
