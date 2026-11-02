@@ -11,6 +11,7 @@
 ## Context & Problem Statement
 
 The initial prototype of `paykit-go` modeled its primary contract after conventional card processing gateways (such as Omnipay):
+
 ```go
 // Legacy prototype interface
 type Gateway interface {
@@ -51,28 +52,32 @@ A foundational architectural redesign is required to support African payment rai
 ## Considered Alternatives
 
 ### 1. Monolithic Card Gateway (Omnipay Model)
+
 Maintain a single unified `Gateway` interface containing `Purchase`, `Authorize`, `Capture`, `Void`, `Refund`, and `Payout`.
 
-- *Pros*: Single interface type throughout the application.
-- *Cons*: Violates Interface Segregation Principle (ISP). Mobile money adapters must implement dummy methods returning runtime errors (`ErrMethodNotSupported`). Callers cannot determine at compile time whether a provider actually supports two-phase authorization or disbursements.
+- _Pros_: Single interface type throughout the application.
+- _Cons_: Violates Interface Segregation Principle (ISP). Mobile money adapters must implement dummy methods returning runtime errors (`ErrMethodNotSupported`). Callers cannot determine at compile time whether a provider actually supports two-phase authorization or disbursements.
 
 ### 2. Hierarchical Resource Services (Stripe-Go Model)
+
 Expose a single massive client struct with nested service objects (e.g., `client.Charges.New(...)`, `client.Payouts.New(...)`, `client.Customers.New(...)`).
 
-- *Pros*: Familiar to developers accustomed to Stripe.
-- *Cons*: Tightly couples the consumer to a single monolithic API surface. In Go, mocking nested service structs requires extensive interface wrappers or deep test doubles. Furthermore, differing payment rails do not share Stripe's unified relational resource model.
+- _Pros_: Familiar to developers accustomed to Stripe.
+- _Cons_: Tightly couples the consumer to a single monolithic API surface. In Go, mocking nested service structs requires extensive interface wrappers or deep test doubles. Furthermore, differing payment rails do not share Stripe's unified relational resource model.
 
 ### 3. Plugin Architecture with Dynamic Loading (KillBill Model)
+
 Implement OSGi-style runtime plugins loaded as shared objects (`.so`) or RPC subprocesses.
 
-- *Pros*: Isolated provider deployment lifecycles.
-- *Cons*: Go's plugin package has severe platform limitations (Cgo requirements, strict build tag and dependency matching). Subprocess RPC adds immense latency and operational complexity inappropriate for an embedded payment SDK.
+- _Pros_: Isolated provider deployment lifecycles.
+- _Cons_: Go's plugin package has severe platform limitations (Cgo requirements, strict build tag and dependency matching). Subprocess RPC adds immense latency and operational complexity inappropriate for an embedded payment SDK.
 
 ### 4. Segregated Capability Interfaces (Selected)
+
 Define small, composable capability interfaces matching distinct payment operations. Providers implement only the capabilities they physically support.
 
-- *Pros*: Highly idiomatic Go. Zero runtime overhead. Strict compile-time validation. Clean mockability. Complete decoupling between collection, payout, and webhook handling.
-- *Cons*: Callers consuming generic `paykit.Gateway` instances must use Go type assertions to detect optional capabilities (e.g. disbursements).
+- _Pros_: Highly idiomatic Go. Zero runtime overhead. Strict compile-time validation. Clean mockability. Complete decoupling between collection, payout, and webhook handling.
+- _Cons_: Callers consuming generic `paykit.Gateway` instances must use Go type assertions to detect optional capabilities (e.g. disbursements).
 
 ---
 
@@ -142,6 +147,7 @@ func ExecutePayout(ctx context.Context, gw paykit.Gateway, req *paykit.Disbursem
 ```
 
 Compile-time verification in provider packages guarantees interface conformance:
+
 ```go
 var (
     _ paykit.Gateway        = (*MpesaGateway)(nil)
@@ -154,6 +160,7 @@ var (
 
 1. **Mode A: Direct Type-Safe Constructors (Primary / Recommended)**:
    Consumers import the specific provider package directly for compile-time safety and self-documenting configuration:
+
    ```go
    import "github.com/Flying-Tea-Squad/paykit-go/mpesa"
 
@@ -227,12 +234,14 @@ sequenceDiagram
 ## Consequences
 
 ### Positive
+
 - **Accurate Domain Modeling**: Cleanly expresses the realities of African mobile money, STK push collections, and B2C disbursement pipelines.
 - **Interface Segregation**: Providers only implement capabilities they support; no dummy methods returning errors.
 - **Extensibility**: New payment rails (e.g. card acquiring, bank transfers, crypto rails) can introduce new capabilities without altering existing interfaces.
 - **Superior Testability**: Applications can mock just `paykit.Gateway` for charging, or mock `paykit.Disburser` for payroll testing without mocking unneeded methods.
 
 ### Negative & Mitigations
+
 - **Breaking Change**: Existing prototype callers referencing `Purchase`, `Authorize`, or `Capture` must migrate to `Charge`. Legacy request types are deprecated gracefully.
 - **Type Assertion Boilerplate**: Interacting with optional capabilities requires `gw.(paykit.Disburser)` assertions. This is mitigated by providing helper functions in the upcoming `paykit.Client` high-level facade.
 
