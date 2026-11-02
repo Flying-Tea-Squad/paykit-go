@@ -40,10 +40,13 @@ type AirtelAcknowledgment struct {
 	Message string `json:"message"`
 }
 
-// PesapalAcknowledgment represents the standard Pesapal IPN callback acknowledgment envelope.
+// PesapalAcknowledgment represents the standard Pesapal API 3.0 IPN callback acknowledgment envelope.
+// Pesapal requires echoing the notification parameters along with an integer HTTP status 200.
 type PesapalAcknowledgment struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
+	OrderNotificationType  string `json:"orderNotificationType"`
+	OrderTrackingID        string `json:"orderTrackingId"`
+	OrderMerchantReference string `json:"orderMerchantReference"`
+	Status                 int    `json:"status"`
 }
 
 // DefaultAcknowledgment represents the generic JSON callback acknowledgment envelope for
@@ -79,12 +82,44 @@ var defaultAirtelAcknowledger = AcknowledgeFunc(func(w http.ResponseWriter, _ *h
 	})
 })
 
-// defaultPesapalAcknowledger writes the Pesapal IPN JSON acknowledgment.
-var defaultPesapalAcknowledger = AcknowledgeFunc(func(w http.ResponseWriter, _ *http.Request, _ *paykit.Event) error {
-	return writeJSON(w, http.StatusOK, PesapalAcknowledgment{
-		Status:  "200",
-		Message: "OK",
-	})
+// defaultPesapalAcknowledger writes the Pesapal API 3.0 IPN JSON acknowledgment echoing notification parameters.
+var defaultPesapalAcknowledger = AcknowledgeFunc(func(w http.ResponseWriter, _ *http.Request, event *paykit.Event) error {
+	ack := PesapalAcknowledgment{
+		OrderNotificationType:  "IPNCHANGE",
+		OrderTrackingID:        "",
+		OrderMerchantReference: "",
+		Status:                 http.StatusOK,
+	}
+	if event != nil {
+		if event.TransactionID != "" {
+			ack.OrderTrackingID = event.TransactionID
+		}
+		if event.Reference != "" {
+			ack.OrderMerchantReference = event.Reference
+		}
+		if event.Metadata != nil {
+			if v, ok := event.Metadata["orderNotificationType"].(string); ok && v != "" {
+				ack.OrderNotificationType = v
+			} else if v, ok := event.Metadata["OrderNotificationType"].(string); ok && v != "" {
+				ack.OrderNotificationType = v
+			}
+			if ack.OrderTrackingID == "" {
+				if v, ok := event.Metadata["orderTrackingId"].(string); ok && v != "" {
+					ack.OrderTrackingID = v
+				} else if v, ok := event.Metadata["OrderTrackingId"].(string); ok && v != "" {
+					ack.OrderTrackingID = v
+				}
+			}
+			if ack.OrderMerchantReference == "" {
+				if v, ok := event.Metadata["orderMerchantReference"].(string); ok && v != "" {
+					ack.OrderMerchantReference = v
+				} else if v, ok := event.Metadata["OrderMerchantReference"].(string); ok && v != "" {
+					ack.OrderMerchantReference = v
+				}
+			}
+		}
+	}
+	return writeJSON(w, http.StatusOK, ack)
 })
 
 // defaultGeneralAcknowledger writes the generic JSON acknowledgment.

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,6 +15,9 @@ import (
 
 	paykit "github.com/Flying-Tea-Squad/paykit-go"
 )
+
+// ErrPayloadTooLarge is returned when an incoming webhook payload exceeds the configured maximum byte limit.
+var ErrPayloadTooLarge = errors.New("webhook: request body exceeds maximum limit")
 
 // EventHandler defines the application callback invoked upon successful webhook verification.
 // If the handler returns a non-nil error, WebhookReceiver aborts processing and returns
@@ -45,7 +49,7 @@ type Receiver struct {
 // to lowercase for case-insensitive URL matching.
 func NewReceiver(
 	routes map[string]paykit.WebhookHandler,
-	eventHandler func(context.Context, *paykit.Event) error,
+	eventHandler EventHandler,
 	opts ...Option,
 ) *Receiver {
 	rcv := &Receiver{
@@ -112,9 +116,16 @@ func (rcv *Receiver) resolveProvider(r *http.Request) string {
 
 	urlPath := path.Clean(r.URL.Path)
 
-	// Strip configured prefix if present.
-	if rcv.pathPrefix != "" && strings.HasPrefix(urlPath, rcv.pathPrefix) {
-		urlPath = strings.TrimPrefix(urlPath, rcv.pathPrefix)
+	// Strip configured prefix if present, enforcing directory path boundaries.
+	if rcv.pathPrefix != "" {
+		prefix := strings.TrimRight(rcv.pathPrefix, "/")
+		if urlPath == prefix {
+			urlPath = "/"
+		} else if strings.HasPrefix(urlPath, prefix+"/") {
+			urlPath = strings.TrimPrefix(urlPath, prefix)
+		} else {
+			return ""
+		}
 	}
 
 	trimmed := strings.Trim(urlPath, "/")
@@ -127,13 +138,7 @@ func (rcv *Receiver) resolveProvider(r *http.Request) string {
 	rcv.mu.RLock()
 	defer rcv.mu.RUnlock()
 
-	// 1. Direct match on the last non-empty segment (e.g. /webhooks/mpesa -> mpesa).
-	last := strings.ToLower(segments[len(segments)-1])
-	if _, ok := rcv.routes[last]; ok {
-		return last
-	}
-
-	// 2. Search all path segments from right to left for registered provider keys.
+	// Search path segments from right to left for registered provider keys.
 	for i := len(segments) - 1; i >= 0; i-- {
 		seg := strings.ToLower(segments[i])
 		if _, ok := rcv.routes[seg]; ok {
@@ -142,7 +147,7 @@ func (rcv *Receiver) resolveProvider(r *http.Request) string {
 	}
 
 	// Fallback to the last segment if no route matches (so 404 includes the candidate name).
-	return last
+	return strings.ToLower(segments[len(segments)-1])
 }
 
 // readAndBufferPayload reads incoming request body bytes up to maxBodyBytes and reconstructs
@@ -162,7 +167,7 @@ func (rcv *Receiver) readAndBufferPayload(r *http.Request) ([]byte, error) {
 	}
 
 	if int64(len(payload)) > rcv.maxBodyBytes {
-		return nil, fmt.Errorf("webhook: request body exceeds maximum limit of %d bytes", rcv.maxBodyBytes)
+		return nil, fmt.Errorf("%w of %d bytes", ErrPayloadTooLarge, rcv.maxBodyBytes)
 	}
 
 	// Reconstruct r.Body and r.GetBody for multiple stream reads.
@@ -182,17 +187,17 @@ func (rcv *Receiver) writeAcknowledgment(
 	handler paykit.WebhookHandler,
 	event *paykit.Event,
 ) error {
-	// 1. If handler itself implements Acknowledger, delegate directly.
-	if ack, ok := handler.(Acknowledger); ok {
-		return ack.Acknowledge(w, r, event)
-	}
-
-	// 2. If custom acknowledger was registered via WithAcknowledger, invoke it.
+	// 1. If custom acknowledger was registered via WithAcknowledger, invoke it first (option override).
 	rcv.mu.RLock()
 	customAck, hasCustom := rcv.acknowledgers[provider]
 	rcv.mu.RUnlock()
 	if hasCustom && customAck != nil {
 		return customAck.Acknowledge(w, r, event)
+	}
+
+	// 2. If handler itself implements Acknowledger, delegate directly.
+	if ack, ok := handler.(Acknowledger); ok {
+		return ack.Acknowledge(w, r, event)
 	}
 
 	// 3. Fallback to built-in provider acknowledgment schemas.
@@ -265,6 +270,10 @@ func (rcv *Receiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				slog.String("error", err.Error()),
 			)
 		}
+		if errors.Is(err, ErrPayloadTooLarge) {
+			rcv.writeErrorResponse(w, http.StatusRequestEntityTooLarge, err.Error())
+			return
+		}
 		rcv.writeErrorResponse(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -278,7 +287,7 @@ func (rcv *Receiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				slog.String("error", err.Error()),
 			)
 		}
-		rcv.writeErrorResponse(w, http.StatusBadRequest, fmt.Sprintf("invalid webhook payload or signature: %v", err))
+		rcv.writeErrorResponse(w, http.StatusBadRequest, "invalid webhook payload or signature")
 		return
 	}
 

@@ -27,7 +27,7 @@ func WithLogger(logger *slog.Logger) Option {
 
 // WithMaxBodyBytes sets the maximum payload size (in bytes) that WebhookReceiver will read from
 // incoming requests. If a request body exceeds this limit, WebhookReceiver aborts reading and returns
-// HTTP 400 Bad Request to prevent unbounded memory allocation.
+// HTTP 413 Payload Too Large (Request Entity Too Large) to prevent unbounded memory allocation.
 //
 // If limit <= 0, DefaultMaxBodyBytes (1 MiB) is used.
 func WithMaxBodyBytes(limit int64) Option {
