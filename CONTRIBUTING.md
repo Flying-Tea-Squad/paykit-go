@@ -137,7 +137,7 @@ paykit-go/
 ├── mpesa/            # Safaricom M-Pesa provider adapter and client
 ├── airtelmoney/      # Airtel Money provider adapter and client
 ├── pesapal/          # Pesapal provider adapter and client
-├── callback/         # Shared webhook and callback parsing/verification utilities
+├── webhook/          # Webhook receiver and verification utilities
 ├── driver/           # Import-all entrypoint for drivers
 └── docs/             # Architecture decision records and specifications
 ```
@@ -222,13 +222,13 @@ Common types include:
 
 Common scopes include:
 
-- `mpesa`, `airtelmoney`, `pesapal`, `gateway`, `callback`, `http`, `core`, `types`.
+- `mpesa`, `airtelmoney`, `pesapal`, `gateway`, `webhook`, `http`, `core`, `types`.
 
 Examples:
 
 ```terminal
 feat(mpesa): add OAuth token caching
-fix(callback): validate callback signature
+fix(webhook): validate webhook signature
 docs: update contributing guide and pr template
 test(mpesa): add stk push fixtures
 refactor(http): simplify retry logic
