@@ -315,7 +315,7 @@ func (rcv *Receiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if rcv.logger != nil {
 				rcv.logger.ErrorContext(ctx, "webhook: application event handler error",
 					slog.String("provider", provider),
-					slog.String("event_type", event.Type),
+					slog.String("event_type", event.Type.String()),
 					slog.String("transaction_id", event.TransactionID),
 					slog.String("error", err.Error()),
 				)
@@ -339,7 +339,7 @@ func (rcv *Receiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if rcv.logger != nil {
 		rcv.logger.DebugContext(ctx, "webhook: successfully processed and acknowledged",
 			slog.String("provider", provider),
-			slog.String("event_type", event.Type),
+			slog.String("event_type", event.Type.String()),
 			slog.String("transaction_id", event.TransactionID),
 		)
 	}
