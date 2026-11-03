@@ -261,6 +261,23 @@ func TestRegexScrubber_TableDriven(t *testing.T) {
 			mustContain: []string{`"PartyA":"2547***5678"`, `"Amount":50`},
 			mustExclude: []string{"254712345678"},
 		},
+		{
+			name:        "JSON with empty string phone preserves valid syntax",
+			input:       `{"phone": "","status":"active"}`,
+			mustContain: []string{`{"phone": "","status":"active"}`},
+		},
+		{
+			name:        "JSON with null phone preserves null literal",
+			input:       `{"phone": null,"status":"active"}`,
+			mustContain: []string{`{"phone": null,"status":"active"}`},
+			mustExclude: []string{`"null"`},
+		},
+		{
+			name:        "JSON with nested phone object preserves structure while masking inner number",
+			input:       `{"phone": {"number": "254712345678"}}`,
+			mustContain: []string{`{"phone": {"number": "2547***5678"}}`},
+			mustExclude: []string{"254712345678"},
+		},
 
 		// JSON Credentials: Passkey, ConsumerSecret, Tokens
 		{

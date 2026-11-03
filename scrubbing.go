@@ -81,7 +81,7 @@ var (
 
 	// jsonPhoneFieldRegex matches JSON fields explicitly designated for phone numbers or MSISDNs.
 	jsonPhoneFieldRegex = regexp.MustCompile(
-		`(?i)("(?:\w*[._-])?(?:phone|phoneNumber|msisdn|party_?a|party_?b|sender_?phone|receiver_?phone)"\s*:\s*)"?([^",\r\n\t}]+)"?`,
+		`(?i)("(?:\w*[._-])?(?:phone|phoneNumber|msisdn|party_?a|party_?b|sender_?phone|receiver_?phone)"\s*:\s*)(?:"([^"\r\n]*)"|(\+?\d+))`,
 	)
 
 	// standalonePhoneRegex matches 10-12 digit Kenyan phone numbers or common formatted variants in text.
@@ -129,13 +129,24 @@ func NewDefaultScrubber() *RegexScrubber {
 				regex: jsonPhoneFieldRegex,
 				replaceFunc: func(match string) string {
 					submatches := jsonPhoneFieldRegex.FindStringSubmatch(match)
-					if len(submatches) != 3 {
+					if len(submatches) != 4 {
 						return match
 					}
 					keyPart := submatches[1]
-					phoneVal := submatches[2]
-					masked := MaskPhone(phoneVal)
-					return fmt.Sprintf("%s\"%s\"", keyPart, masked)
+					quotedVal := submatches[2]
+					numericVal := submatches[3]
+
+					if numericVal != "" {
+						masked := MaskPhone(numericVal)
+						return fmt.Sprintf("%s\"%s\"", keyPart, masked)
+					}
+
+					if quotedVal != "" {
+						masked := MaskPhone(quotedVal)
+						return fmt.Sprintf("%s\"%s\"", keyPart, masked)
+					}
+
+					return match
 				},
 			},
 
