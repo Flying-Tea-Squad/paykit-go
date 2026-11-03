@@ -76,7 +76,7 @@ var (
 
 	// xmlCredentialRegex matches sensitive tags in XML / SOAP payloads.
 	xmlCredentialRegex = regexp.MustCompile(
-		`(?i)(<(?:\w+:)?(?:Password|SecurityCredential|PassKey|ConsumerSecret|Token|PIN)>)[^<]+(</(?:\w+:)?(?:Password|SecurityCredential|PassKey|ConsumerSecret|Token|PIN)>)`,
+		`(?i)(<(?:\w+:)?(?:Password|SecurityCredential|PassKey|ConsumerSecret|Token|PIN)(?:\s+[^>]*)?>)[^<]+(</(?:\w+:)?(?:Password|SecurityCredential|PassKey|ConsumerSecret|Token|PIN)>)`,
 	)
 
 	// jsonPhoneFieldRegex matches JSON fields explicitly designated for phone numbers or MSISDNs.

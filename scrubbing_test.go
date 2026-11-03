@@ -330,6 +330,14 @@ func TestRegexScrubber_TableDriven(t *testing.T) {
 			},
 			mustExclude: []string{"secret-soap-password", "254712345678"},
 		},
+		{
+			name: "WS-Security SOAP XML credentials with attributes",
+			input: `<wsse:Security><wsse:Password Type="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText">raw-wsse-password-secret</wsse:Password></wsse:Security>`,
+			mustContain: []string{
+				`<wsse:Password Type="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText">[REDACTED]</wsse:Password>`,
+			},
+			mustExclude: []string{"raw-wsse-password-secret"},
+		},
 
 		// Preservation of non-sensitive diagnostic identifiers
 		{
