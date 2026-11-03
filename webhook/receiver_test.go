@@ -75,7 +75,7 @@ func TestWebhookReceiver_TableDrivenScenarios(t *testing.T) {
 			expectedJSONBody:   `{"ResultCode":0,"ResultDesc":"Accepted"}`,
 			validateEvent: func(t *testing.T, evt *paykit.Event) {
 				assert.Equal(t, "mpesa", evt.Provider)
-				assert.Equal(t, "charge.completed", evt.Type)
+				assert.Equal(t, paykit.EventChargeCompleted, evt.Type)
 				assert.Equal(t, "txn_test_123", evt.TransactionID)
 				assert.Equal(t, paykit.StatusSuccess, evt.Status)
 				assert.Equal(t, paykit.NewKES(1500), evt.Amount)
