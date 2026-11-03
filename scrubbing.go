@@ -305,7 +305,10 @@ func (h *ScrubbingHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	if h == nil || h.next == nil {
 		return nil
 	}
-	if h.scrubber == nil || len(attrs) == 0 {
+	if len(attrs) == 0 {
+		return h
+	}
+	if h.scrubber == nil {
 		return &ScrubbingHandler{
 			next:     h.next.WithAttrs(attrs),
 			scrubber: h.scrubber,
@@ -327,6 +330,9 @@ func (h *ScrubbingHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 func (h *ScrubbingHandler) WithGroup(name string) slog.Handler {
 	if h == nil || h.next == nil {
 		return nil
+	}
+	if name == "" {
+		return h
 	}
 	return &ScrubbingHandler{
 		next:     h.next.WithGroup(name),

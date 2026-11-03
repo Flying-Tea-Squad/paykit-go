@@ -2,6 +2,7 @@ package paykit
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"testing"
 
@@ -32,6 +33,20 @@ func TestScrubbingHandler_NilDefenses(t *testing.T) {
 	assert.Nil(t, nilHandler.WithGroup("grp"))
 
 	assert.Nil(t, NewScrubbingHandler(nil, nil))
+}
+
+func TestScrubbingHandler_EmptyFastPaths(t *testing.T) {
+	t.Parallel()
+
+	baseHandler := slog.NewTextHandler(io.Discard, nil)
+	handler := NewScrubbingHandler(baseHandler, nil)
+
+	// WithAttrs with 0 attributes returns receiver directly without allocating
+	assert.Same(t, handler, handler.WithAttrs(nil))
+	assert.Same(t, handler, handler.WithAttrs([]slog.Attr{}))
+
+	// WithGroup with empty name returns receiver directly without allocating
+	assert.Same(t, handler, handler.WithGroup(""))
 }
 
 func TestIsSensitiveKey(t *testing.T) {
