@@ -66,6 +66,10 @@ type HTTPClientConfig struct {
 	// DumpWriter is an optional writer to which full wire dumps of requests and responses will be written.
 	DumpWriter io.Writer
 
+	// Scrubber is an optional sensitive data scrubber. When nil, NewHTTPClient defaults
+	// to NewDefaultScrubber() to prevent leakage of credentials and PII in wire dumps and logs.
+	Scrubber Scrubber
+
 	// RetryBaseDelay is the initial backoff delay between retry attempts.
 	// Defaults to 100 milliseconds.
 	RetryBaseDelay time.Duration
@@ -87,6 +91,7 @@ type HTTPClient struct {
 	client            *http.Client
 	logger            *slog.Logger
 	dumpWriter        io.Writer
+	scrubber          Scrubber
 	dumpMu            sync.Mutex
 	maxAttempts       int
 	retryBaseDelay    time.Duration
@@ -124,13 +129,24 @@ func NewHTTPClient(config HTTPClientConfig) *HTTPClient {
 		transport.TLSClientConfig = config.TLSConfig.Clone()
 	}
 
+	scrubber := config.Scrubber
+	if scrubber == nil {
+		scrubber = NewDefaultScrubber()
+	}
+
+	var logger *slog.Logger
+	if config.Logger != nil {
+		logger = slog.New(NewScrubbingHandler(config.Logger.Handler(), scrubber))
+	}
+
 	return &HTTPClient{
 		client: &http.Client{
 			Timeout:   requestTimeout,
 			Transport: transport,
 		},
-		logger:            config.Logger,
+		logger:            logger,
 		dumpWriter:        config.DumpWriter,
+		scrubber:          scrubber,
 		maxAttempts:       maxAttempts,
 		retryBaseDelay:    retryBaseDelay,
 		idempotencyPolicy: config.IdempotencyPolicy,
@@ -459,6 +475,11 @@ func (c *HTTPClient) dumpRequest(req *http.Request) {
 		c.logDebug("failed to dump http request", "error", err)
 		return
 	}
+	scrubber := c.scrubber
+	if scrubber == nil {
+		scrubber = NewDefaultScrubber()
+	}
+	dump = []byte(scrubber.Scrub(string(dump)))
 	_, _ = c.dumpWriter.Write(dump)
 	_, _ = c.dumpWriter.Write([]byte("\n"))
 }
@@ -475,6 +496,11 @@ func (c *HTTPClient) dumpResponse(resp *http.Response) {
 		c.logDebug("failed to dump http response", "error", err)
 		return
 	}
+	scrubber := c.scrubber
+	if scrubber == nil {
+		scrubber = NewDefaultScrubber()
+	}
+	dump = []byte(scrubber.Scrub(string(dump)))
 	_, _ = c.dumpWriter.Write(dump)
 	_, _ = c.dumpWriter.Write([]byte("\n"))
 }
