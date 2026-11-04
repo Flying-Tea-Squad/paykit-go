@@ -18,11 +18,6 @@ func TestClient_InterfaceAssertions(t *testing.T) {
 	var _ paykit.Gateway = client
 	var _ paykit.Disburser = client
 
-	client2 := NewClient()
-	if client2 == nil {
-		t.Fatal("expected NewClient() to return non-nil Client")
-	}
-
 	if client.Name() != "bogus" {
 		t.Fatalf("expected Name() to be 'bogus', got %q", client.Name())
 	}
@@ -68,19 +63,19 @@ func TestClient_Charge_TableDriven(t *testing.T) {
 			wantTxnIDPfx: "bogus_chg_",
 		},
 		{
-			name:         "amount ends in 05 -> StatusFailed with ErrUserCancelled",
+			name:         "amount ends in 05 -> StatusCancelled",
 			req:          chargeReqCancelled(),
-			wantStatus:   paykit.StatusFailed,
+			wantStatus:   paykit.StatusCancelled,
 			wantSuccess:  false,
-			wantErr:      ErrUserCancelled,
+			wantErr:      nil,
 			wantTxnIDPfx: "fail_chg_",
 		},
 		{
-			name:         "amount ends in 02 -> StatusFailed with ErrPinTimeout",
+			name:         "amount ends in 02 -> StatusTimeout",
 			req:          chargeReqPinTimeout(),
-			wantStatus:   paykit.StatusFailed,
+			wantStatus:   paykit.StatusTimeout,
 			wantSuccess:  false,
-			wantErr:      ErrPinTimeout,
+			wantErr:      nil,
 			wantTxnIDPfx: "fail_chg_",
 		},
 		{
@@ -106,6 +101,16 @@ func TestClient_Charge_TableDriven(t *testing.T) {
 			wantSuccess:  true,
 			wantErr:      nil,
 			wantTxnIDPfx: "bogus_chg_txn_500",
+		},
+		{
+			name:    "zero amount returns ErrChargeAmountInvalid",
+			req:     buildChargeRequest(0, "+254712000000", "ZERO"),
+			wantErr: ErrChargeAmountInvalid,
+		},
+		{
+			name:    "negative amount returns ErrChargeAmountInvalid",
+			req:     buildChargeRequest(-100, "+254712000000", "NEG"),
+			wantErr: ErrChargeAmountInvalid,
 		},
 		{
 			name:    "nil request returns ErrNilRequest",
@@ -151,12 +156,10 @@ func TestClient_Charge_TableDriven(t *testing.T) {
 				if !errors.Is(err, tt.wantErr) {
 					t.Fatalf("expected error %v, got %v", tt.wantErr, err)
 				}
-				if tt.req == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-					if resp != nil {
-						t.Fatalf("expected nil response on guard failure, got %+v", resp)
-					}
-					return
+				if resp != nil {
+					t.Fatalf("expected nil response on error, got %+v", resp)
 				}
+				return
 			} else if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -201,11 +204,11 @@ func TestClient_Disburse_TableDriven(t *testing.T) {
 			wantTxnIDPfx: "bogus_disb_",
 		},
 		{
-			name:         "amount ends in 50 -> StatusFailed with ErrInsufficientFunds",
+			name:         "amount ends in 50 -> StatusFailed with insufficient funds",
 			req:          disburseReqInsufficientFunds(),
 			wantStatus:   paykit.StatusFailed,
 			wantSuccess:  false,
-			wantErr:      ErrInsufficientFunds,
+			wantErr:      nil,
 			wantTxnIDPfx: "fail_disb_",
 		},
 		{
@@ -222,7 +225,17 @@ func TestClient_Disburse_TableDriven(t *testing.T) {
 			wantStatus:   paykit.StatusSuccess,
 			wantSuccess:  true,
 			wantErr:      nil,
-			wantTxnIDPfx: "bogus_disb_disb_1000",
+			wantTxnIDPfx: "bogus_disb_txn_1000",
+		},
+		{
+			name:    "zero amount returns ErrDisburseAmountInvalid",
+			req:     buildDisbursementRequest(0, "+254798000000", "ZERO"),
+			wantErr: ErrDisburseAmountInvalid,
+		},
+		{
+			name:    "negative amount returns ErrDisburseAmountInvalid",
+			req:     buildDisbursementRequest(-500, "+254798000000", "NEG"),
+			wantErr: ErrDisburseAmountInvalid,
 		},
 		{
 			name:    "nil request returns ErrNilRequest",
@@ -268,12 +281,10 @@ func TestClient_Disburse_TableDriven(t *testing.T) {
 				if !errors.Is(err, tt.wantErr) {
 					t.Fatalf("expected error %v, got %v", tt.wantErr, err)
 				}
-				if tt.req == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-					if resp != nil {
-						t.Fatalf("expected nil response on guard failure, got %+v", resp)
-					}
-					return
+				if resp != nil {
+					t.Fatalf("expected nil response on error, got %+v", resp)
 				}
+				return
 			} else if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -335,6 +346,16 @@ func TestClient_QueryStatus_TableDriven(t *testing.T) {
 			wantStatus:  paykit.StatusSuccess,
 			wantSuccess: true,
 			wantErr:     nil,
+		},
+		{
+			name:    "empty TransactionID returns ErrTransactionIDRequired",
+			req:     buildStatusRequest(""),
+			wantErr: ErrTransactionIDRequired,
+		},
+		{
+			name:    "whitespace TransactionID returns ErrTransactionIDRequired",
+			req:     buildStatusRequest("   "),
+			wantErr: ErrTransactionIDRequired,
 		},
 		{
 			name:    "nil request returns ErrNilRequest",
@@ -424,6 +445,16 @@ func TestClient_Refund_TableDriven(t *testing.T) {
 			wantErr:     nil,
 		},
 		{
+			name:    "empty TransactionID returns ErrTransactionIDRequired",
+			req:     buildRefundRequest("", 1000),
+			wantErr: ErrTransactionIDRequired,
+		},
+		{
+			name:    "whitespace TransactionID returns ErrTransactionIDRequired",
+			req:     buildRefundRequest("   ", 1000),
+			wantErr: ErrTransactionIDRequired,
+		},
+		{
 			name:    "nil request returns ErrNilRequest",
 			req:     nil,
 			wantErr: ErrNilRequest,
@@ -500,22 +531,22 @@ func TestClient_Concurrency(t *testing.T) {
 				switch (workerID + i) % 4 {
 				case 0:
 					resp, err := client.Charge(ctx, chargeReqSuccess())
-					if err != nil || resp.Status != paykit.StatusSuccess {
+					if err != nil || resp.Status != paykit.StatusSuccess || !resp.Success {
 						t.Errorf("concurrent charge failed: %v, status=%v", err, resp)
 					}
 				case 1:
 					resp, err := client.Charge(ctx, chargeReqCancelled())
-					if !errors.Is(err, ErrUserCancelled) || resp.Status != paykit.StatusFailed {
+					if err != nil || resp.Status != paykit.StatusCancelled || resp.Success {
 						t.Errorf("concurrent charge cancel failed: %v, status=%v", err, resp)
 					}
 				case 2:
 					resp, err := client.Disburse(ctx, disburseReqSuccess())
-					if err != nil || resp.Status != paykit.StatusSuccess {
+					if err != nil || resp.Status != paykit.StatusSuccess || !resp.Success {
 						t.Errorf("concurrent disburse failed: %v, status=%v", err, resp)
 					}
 				case 3:
 					resp, err := client.QueryStatus(ctx, buildStatusRequest("normal_id"))
-					if err != nil || resp.Status != paykit.StatusSuccess {
+					if err != nil || resp.Status != paykit.StatusSuccess || !resp.Success {
 						t.Errorf("concurrent query failed: %v, status=%v", err, resp)
 					}
 				}

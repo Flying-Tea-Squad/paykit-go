@@ -53,15 +53,15 @@ func buildRefundRequest(txnID string, amount int64) *paykit.RefundRequest {
 
 // Presets for deterministic Charge scenarios
 func chargeReqSuccess() *paykit.ChargeRequest {
-	return buildChargeRequest(1000, "+254712000000", "SUCCESS_00")
+	return buildChargeRequest(1000+SuffixSuccess, "+254712000000", "SUCCESS_00")
 }
 
 func chargeReqCancelled() *paykit.ChargeRequest {
-	return buildChargeRequest(1005, "+254712000005", "CANCEL_05")
+	return buildChargeRequest(1000+SuffixUserCancelled, "+254712000005", "CANCEL_05")
 }
 
 func chargeReqPinTimeout() *paykit.ChargeRequest {
-	return buildChargeRequest(1002, "+254712000002", "TIMEOUT_02")
+	return buildChargeRequest(1000+SuffixPinTimeout, "+254712000002", "TIMEOUT_02")
 }
 
 func chargeReqProcessing() *paykit.ChargeRequest {
@@ -70,11 +70,11 @@ func chargeReqProcessing() *paykit.ChargeRequest {
 
 // Presets for deterministic Disbursement scenarios
 func disburseReqSuccess() *paykit.DisbursementRequest {
-	return buildDisbursementRequest(2500, "+254798000000", "DISB_SUCCESS_00")
+	return buildDisbursementRequest(2500+SuffixSuccess, "+254798000000", "DISB_SUCCESS_00")
 }
 
 func disburseReqInsufficientFunds() *paykit.DisbursementRequest {
-	return buildDisbursementRequest(2550, "+254798000050", "DISB_INSUFFICIENT_50")
+	return buildDisbursementRequest(2500+SuffixInsufficientFunds, "+254798000050", "DISB_INSUFFICIENT_50")
 }
 
 func disburseReqProcessing() *paykit.DisbursementRequest {

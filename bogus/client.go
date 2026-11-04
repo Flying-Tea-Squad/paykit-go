@@ -10,18 +10,32 @@ import (
 	"github.com/Flying-Tea-Squad/paykit-go"
 )
 
+const (
+	// SuffixSuccess routes Charge and Disburse operations to StatusSuccess.
+	SuffixSuccess = 0
+
+	// SuffixPinTimeout routes Charge operations to StatusTimeout simulating customer PIN entry timeout.
+	SuffixPinTimeout = 2
+
+	// SuffixUserCancelled routes Charge operations to StatusCancelled simulating customer cancellation.
+	SuffixUserCancelled = 5
+
+	// SuffixInsufficientFunds routes Disburse operations to StatusFailed simulating insufficient account balance.
+	SuffixInsufficientFunds = 50
+)
+
 var (
 	// ErrNilRequest is returned when a nil request pointer is provided to any gateway method.
 	ErrNilRequest = errors.New("bogus: request cannot be nil")
 
-	// ErrUserCancelled indicates the simulated customer cancelled the payment prompt.
-	ErrUserCancelled = errors.New("bogus: user cancelled transaction")
+	// ErrChargeAmountInvalid is returned when a charge amount is not greater than zero.
+	ErrChargeAmountInvalid = errors.New("bogus: charge amount must be greater than zero")
 
-	// ErrPinTimeout indicates the simulated customer did not enter their PIN before timeout.
-	ErrPinTimeout = errors.New("bogus: pin entry timeout")
+	// ErrDisburseAmountInvalid is returned when a disbursement amount is not greater than zero.
+	ErrDisburseAmountInvalid = errors.New("bogus: disburse amount must be greater than zero")
 
-	// ErrInsufficientFunds indicates simulated insufficient funds for disbursement.
-	ErrInsufficientFunds = paykit.ErrInsufficientFundsSentinel
+	// ErrTransactionIDRequired is returned when a transaction ID is missing or empty.
+	ErrTransactionIDRequired = errors.New("bogus: transaction ID is required")
 )
 
 // Client is a zero-dependency in-memory test double gateway implementing paykit.Gateway
@@ -46,21 +60,16 @@ func New() *Client {
 	return &Client{}
 }
 
-// NewClient is an alias for New.
-func NewClient() *Client {
-	return New()
-}
-
 // Name returns the canonical provider name for the test double.
 func (c *Client) Name() string {
 	return "bogus"
 }
 
-// Charge deterministically simulates payment collection based on req.Amount.Amount:
-//   - Ends in 00 -> StatusSuccess
-//   - Ends in 05 -> StatusFailed with ErrUserCancelled
-//   - Ends in 02 -> StatusFailed with ErrPinTimeout
-//   - Otherwise  -> StatusProcessing
+// Charge deterministically simulates payment collection based on req.Amount.Amount() % 100:
+//   - SuffixSuccess (00)       -> StatusSuccess
+//   - SuffixUserCancelled (05) -> StatusCancelled
+//   - SuffixPinTimeout (02)    -> StatusTimeout
+//   - Otherwise                -> StatusProcessing
 func (c *Client) Charge(ctx context.Context, req *paykit.ChargeRequest) (*paykit.ChargeResponse, error) {
 	if ctx == nil {
 		return nil, errors.New("bogus: nil context")
@@ -72,11 +81,10 @@ func (c *Client) Charge(ctx context.Context, req *paykit.ChargeRequest) (*paykit
 		return nil, ErrNilRequest
 	}
 
-	amount := req.Amount.Amount()
-	if amount < 0 {
-		amount = -amount
+	if req.Amount.Amount() <= 0 {
+		return nil, ErrChargeAmountInvalid
 	}
-	suffix := amount % 100
+	suffix := req.Amount.Amount() % 100
 
 	txnRef := req.Reference
 	if txnRef == "" {
@@ -84,7 +92,7 @@ func (c *Client) Charge(ctx context.Context, req *paykit.ChargeRequest) (*paykit
 	}
 
 	switch suffix {
-	case 0:
+	case SuffixSuccess:
 		return &paykit.ChargeResponse{
 			Success:       true,
 			Message:       "charge successful",
@@ -96,30 +104,30 @@ func (c *Client) Charge(ctx context.Context, req *paykit.ChargeRequest) (*paykit
 				"phone":    req.Phone,
 			},
 		}, nil
-	case 5:
+	case SuffixUserCancelled:
 		return &paykit.ChargeResponse{
 			Success:       false,
-			Message:       ErrUserCancelled.Error(),
+			Message:       "user cancelled transaction",
 			TransactionID: "fail_chg_" + txnRef,
-			Status:        paykit.StatusFailed,
-			Raw:           json.RawMessage(`{"status":"failed","error":"user_cancelled","provider":"bogus"}`),
+			Status:        paykit.StatusCancelled,
+			Raw:           json.RawMessage(`{"status":"cancelled","error":"user_cancelled","provider":"bogus"}`),
 			Metadata: map[string]any{
 				"provider": "bogus",
 				"phone":    req.Phone,
 			},
-		}, ErrUserCancelled
-	case 2:
+		}, nil
+	case SuffixPinTimeout:
 		return &paykit.ChargeResponse{
 			Success:       false,
-			Message:       ErrPinTimeout.Error(),
+			Message:       "pin entry timeout",
 			TransactionID: "fail_chg_" + txnRef,
-			Status:        paykit.StatusFailed,
-			Raw:           json.RawMessage(`{"status":"failed","error":"pin_timeout","provider":"bogus"}`),
+			Status:        paykit.StatusTimeout,
+			Raw:           json.RawMessage(`{"status":"timeout","error":"pin_timeout","provider":"bogus"}`),
 			Metadata: map[string]any{
 				"provider": "bogus",
 				"phone":    req.Phone,
 			},
-		}, ErrPinTimeout
+		}, nil
 	default:
 		return &paykit.ChargeResponse{
 			Success:       true,
@@ -135,10 +143,10 @@ func (c *Client) Charge(ctx context.Context, req *paykit.ChargeRequest) (*paykit
 	}
 }
 
-// Disburse deterministically simulates funds disbursement based on req.Amount.Amount:
-//   - Ends in 00 -> StatusSuccess
-//   - Ends in 50 -> StatusFailed with ErrInsufficientFunds
-//   - Otherwise  -> StatusProcessing
+// Disburse deterministically simulates funds disbursement based on req.Amount.Amount() % 100:
+//   - SuffixSuccess (00)           -> StatusSuccess
+//   - SuffixInsufficientFunds (50) -> StatusFailed
+//   - Otherwise                    -> StatusProcessing
 func (c *Client) Disburse(ctx context.Context, req *paykit.DisbursementRequest) (*paykit.DisbursementResponse, error) {
 	if ctx == nil {
 		return nil, errors.New("bogus: nil context")
@@ -150,19 +158,18 @@ func (c *Client) Disburse(ctx context.Context, req *paykit.DisbursementRequest) 
 		return nil, ErrNilRequest
 	}
 
-	amount := req.Amount.Amount()
-	if amount < 0 {
-		amount = -amount
+	if req.Amount.Amount() <= 0 {
+		return nil, ErrDisburseAmountInvalid
 	}
-	suffix := amount % 100
+	suffix := req.Amount.Amount() % 100
 
 	txnRef := req.Reference
 	if txnRef == "" {
-		txnRef = fmt.Sprintf("disb_%d", req.Amount.Amount())
+		txnRef = fmt.Sprintf("txn_%d", req.Amount.Amount())
 	}
 
 	switch suffix {
-	case 0:
+	case SuffixSuccess:
 		return &paykit.DisbursementResponse{
 			Success:       true,
 			Message:       "disbursement successful",
@@ -174,10 +181,10 @@ func (c *Client) Disburse(ctx context.Context, req *paykit.DisbursementRequest) 
 				"phone":    req.Phone,
 			},
 		}, nil
-	case 50:
+	case SuffixInsufficientFunds:
 		return &paykit.DisbursementResponse{
 			Success:       false,
-			Message:       ErrInsufficientFunds.Error(),
+			Message:       "insufficient funds",
 			TransactionID: "fail_disb_" + txnRef,
 			Status:        paykit.StatusFailed,
 			Raw:           json.RawMessage(`{"status":"failed","error":"insufficient_funds","provider":"bogus"}`),
@@ -185,7 +192,7 @@ func (c *Client) Disburse(ctx context.Context, req *paykit.DisbursementRequest) 
 				"provider": "bogus",
 				"phone":    req.Phone,
 			},
-		}, ErrInsufficientFunds
+		}, nil
 	default:
 		return &paykit.DisbursementResponse{
 			Success:       true,
@@ -213,6 +220,10 @@ func (c *Client) QueryStatus(ctx context.Context, req *paykit.StatusRequest) (*p
 	}
 	if req == nil {
 		return nil, ErrNilRequest
+	}
+
+	if strings.TrimSpace(req.TransactionID) == "" {
+		return nil, ErrTransactionIDRequired
 	}
 
 	if strings.HasPrefix(req.TransactionID, "fail") {
@@ -252,6 +263,10 @@ func (c *Client) Refund(ctx context.Context, req *paykit.RefundRequest) (*paykit
 	}
 	if req == nil {
 		return nil, ErrNilRequest
+	}
+
+	if strings.TrimSpace(req.TransactionID) == "" {
+		return nil, ErrTransactionIDRequired
 	}
 
 	if strings.HasPrefix(req.TransactionID, "fail") {
