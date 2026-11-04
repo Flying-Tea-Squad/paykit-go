@@ -94,3 +94,38 @@ func TestMapGatewayErrorCode(t *testing.T) {
 		})
 	}
 }
+
+func TestSentinelErrorsIntegrity(t *testing.T) {
+	sentinels := []struct {
+		sentinel error
+		expected string
+	}{
+		{ErrUserCancelledSentinel, ErrUserCancelled},
+		{ErrPinTimeoutSentinel, ErrPinTimeout},
+		{ErrInvalidPhoneNumberSentinel, ErrInvalidPhoneNumber},
+		{ErrDailyLimitExceededSentinel, ErrDailyLimitExceeded},
+		{ErrInvalidShortCodeSentinel, ErrInvalidShortCode},
+		{ErrProcessingErrorSentinel, ErrProcessingError},
+		{ErrDuplicateSentinel, ErrDuplicate},
+		{ErrAuthFailedSentinel, ErrAuthFailed},
+		{ErrInsufficientFundsSentinel, ErrInsufficientFunds},
+		{ErrTimeoutSentinel, ErrTimeout},
+		{ErrMissingIdempotencyKeySentinel, ErrMissingIdempotencyKey},
+		{ErrIncorrectNumberSentinel, ErrIncorrectNumber},
+		{ErrInvalidNumberSentinel, ErrInvalidNumber},
+		{ErrInvalidExpiryDateSentinel, ErrInvalidExpiryDate},
+		{ErrInvalidCVCSentinel, ErrInvalidCVC},
+		{ErrExpiredCardSentinel, ErrExpiredCard},
+		{ErrCardDeclinedSentinel, ErrCardDeclined},
+	}
+
+	for _, s := range sentinels {
+		if s.sentinel == nil {
+			t.Errorf("Sentinel error for %q is nil", s.expected)
+			continue
+		}
+		if s.sentinel.Error() != s.expected {
+			t.Errorf("Sentinel error string = %q, expected %q", s.sentinel.Error(), s.expected)
+		}
+	}
+}
