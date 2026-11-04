@@ -1,15 +1,11 @@
 package paykit
 
 import (
-	"errors"
 	"regexp"
 	"strings"
 )
 
 var (
-	// ErrInvalidPhoneNumber is returned when a phone number cannot be parsed or normalized.
-	ErrInvalidPhoneNumber = errors.New("invalid phone number")
-
 	// kenyanMobilePrefixes contains valid 2-digit national mobile network
 	// prefixes in Kenya (07x and 01x ranges allocated by CAK).
 	kenyanMobilePrefixes = map[string]bool{
@@ -38,25 +34,25 @@ var (
 //   - Formatted with spaces, hyphens, or dots (e.g., "0700-000-001", "0712 345 678")
 //
 // Returns the normalized 12-digit E.164 string (e.g., "254700000001").
-// Returns ErrInvalidPhoneNumber for invalid prefixes, wrong length, or non-Kenyan numbers.
+// Returns ErrInvalidPhoneNumberSentinel for invalid prefixes, wrong length, or non-Kenyan numbers.
 func FormatKenyanPhone(phone string) (string, error) {
 	// Strip common formatting delimiters (spaces, hyphens, dots) before validation.
 	cleaned := strings.NewReplacer(" ", "", "-", "", ".", "").Replace(phone)
 	cleaned = strings.TrimSpace(cleaned)
 	if cleaned == "" {
-		return "", ErrInvalidPhoneNumber
+		return "", ErrInvalidPhoneNumberSentinel
 	}
 
 	matches := phoneRegex.FindStringSubmatch(cleaned)
 	if matches == nil {
-		return "", ErrInvalidPhoneNumber
+		return "", ErrInvalidPhoneNumberSentinel
 	}
 
 	nationalNumber := matches[1] // 9 digits starting with 7 or 1
 	prefix := nationalNumber[:2]
 
 	if !kenyanMobilePrefixes[prefix] {
-		return "", ErrInvalidPhoneNumber
+		return "", ErrInvalidPhoneNumberSentinel
 	}
 
 	return "254" + nationalNumber, nil
