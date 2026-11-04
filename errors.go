@@ -1,6 +1,9 @@
 package paykit
 
-import "errors"
+import (
+	"errors"
+	"strings"
+)
 
 // Standardized error codes returned by PayKit.
 const (
@@ -54,27 +57,49 @@ var (
 	ErrCardDeclinedSentinel      = errors.New(ErrCardDeclined)
 )
 
-// gatewayErrorMap maps provider-specific error codes to standardized PayKit codes.
-var gatewayErrorMap = map[string]string{
-	// M-Pesa examples
-	"1032": ErrCardDeclined,
-	"2001": ErrInvalidNumber,
-	"1025": ErrTimeout,
-
-	// Generic provider examples
-	"INVALID_PHONE":      ErrInvalidNumber,
-	"INSUFFICIENT_FUNDS": ErrInsufficientFunds,
-	"AUTH_FAILED":        ErrAuthFailed,
-	"DUPLICATE":          ErrDuplicate,
-	"TIMEOUT":            ErrTimeout,
+// gatewayErrorMap maps provider-specific error codes to standardized PayKit codes
+// by provider namespace.
+var gatewayErrorMap = map[string]map[string]string{
+	"mpesa": {
+		"1032":           ErrUserCancelled,
+		"1037":           ErrPinTimeout,
+		"2001":           ErrInvalidPhoneNumber,
+		"1025":           ErrTimeout,
+		"SFC_IC_0000006": ErrDailyLimitExceeded,
+		"SFC_IC_0000003": ErrInvalidShortCode,
+	},
+	"default": {
+		"INVALID_PHONE":      ErrInvalidPhoneNumber,
+		"INSUFFICIENT_FUNDS": ErrInsufficientFunds,
+		"AUTH_FAILED":        ErrAuthFailed,
+		"DUPLICATE":          ErrDuplicate,
+		"TIMEOUT":            ErrTimeout,
+		"USER_CANCELLED":     ErrUserCancelled,
+	},
 }
 
 // MapGatewayErrorCode translates a provider-specific error code into a
-// standardized PayKit error code. If the code is unknown, it returns
-// ErrProcessingError.
-func MapGatewayErrorCode(code string) string {
-	if standardized, ok := gatewayErrorMap[code]; ok {
-		return standardized
+// standardized PayKit error code.
+//
+// The provider identifier is case-insensitive; it is automatically trimmed of
+// whitespace and lowercased before lookup (e.g., "Mpesa" resolves to "mpesa").
+//
+// If the error code is not found within the provider's namespace, the generic
+// "default" namespace is searched as a fallback. If the code remains unknown,
+// ErrProcessingError is returned.
+func MapGatewayErrorCode(provider, code string) string {
+	normalizedProvider := strings.ToLower(strings.TrimSpace(provider))
+
+	if providerMap, ok := gatewayErrorMap[normalizedProvider]; ok {
+		if standardized, ok := providerMap[code]; ok {
+			return standardized
+		}
+	}
+
+	if defaultMap, ok := gatewayErrorMap["default"]; ok {
+		if standardized, ok := defaultMap[code]; ok {
+			return standardized
+		}
 	}
 
 	return ErrProcessingError
