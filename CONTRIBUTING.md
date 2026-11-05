@@ -287,9 +287,10 @@ When implementing a new payment provider:
 2. Implement the shared capability interfaces (`Gateway`, `Disburser`, `WebhookHandler`, etc.) as defined in `gateway.go`.
 3. Handle provider authentication internally (e.g., token management, caching, signature generation).
 4. Normalize vendor responses into common PayKit-Go response types (`ChargeResponse`, `StatusResponse`, etc.).
-5. Include deterministic test fixtures and mocked HTTP test coverage.
-6. Provide comprehensive blackbox and whitebox tests.
-7. Document provider-specific configuration and register the driver if appropriate.
+5. Map provider-specific error codes to PayKit standard codes by adding a provider namespace entry to `gatewayErrorMap` in `errors.go`. Use the existing PayKit error constants (e.g., `ErrUserCancelled`, `ErrInsufficientFunds`) as values, and introduce new taxonomy constants for error types not yet covered.
+6. Include deterministic test fixtures and mocked HTTP test coverage.
+7. Provide comprehensive blackbox and whitebox tests.
+8. Document provider-specific configuration and register the driver if appropriate.
 
 ---
 
