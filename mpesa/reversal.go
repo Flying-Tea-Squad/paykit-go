@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -79,6 +80,10 @@ func (c *Client) ReverseTransaction(ctx context.Context, req ReversalRequest) (*
 	}()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if msg := strings.TrimSpace(string(body)); msg != "" {
+			return nil, fmt.Errorf("mpesa: unexpected status code %d from reversal: %s", resp.StatusCode, msg)
+		}
 		return nil, fmt.Errorf("mpesa: unexpected status code %d from reversal", resp.StatusCode)
 	}
 

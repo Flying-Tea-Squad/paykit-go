@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -76,6 +77,10 @@ func (c *Client) STKPushQuery(ctx context.Context, req STKPushQueryRequest) (*ST
 	}()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if msg := strings.TrimSpace(string(body)); msg != "" {
+			return nil, fmt.Errorf("mpesa: unexpected status code %d from STK query: %s", resp.StatusCode, msg)
+		}
 		return nil, fmt.Errorf("mpesa: unexpected status code %d from STK query", resp.StatusCode)
 	}
 

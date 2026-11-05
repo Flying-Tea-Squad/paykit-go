@@ -107,7 +107,9 @@ func New(cfg Config) (*Gateway, error) {
 	}
 
 	if cfg.HTTPClient == nil {
-		cfg.HTTPClient = paykit.NewHTTPClient(paykit.HTTPClientConfig{})
+		cfg.HTTPClient = paykit.NewHTTPClient(paykit.HTTPClientConfig{
+			IdempotencyPolicy: paykit.IdempotencyPolicyOptional,
+		})
 	}
 
 	tokenManager := NewTokenManager(
@@ -157,9 +159,11 @@ func (g *Gateway) Name() string {
 
 // Charge initiates a customer payment collection via SIM Toolkit STK Push (Lipa Na M-Pesa Online).
 //
-// The amount is converted from minor units (cents) to whole Kenyan Shillings. Amounts below
-// 1 KES or currencies other than KES are rejected. The phone number is automatically validated
-// and normalized to 12-digit E.164 format.
+// The amount is converted from minor units (cents) to whole Kenyan Shillings. Because Safaricom
+// Daraja only operates in integer Kenyan Shillings, sub-shilling fractions (e.g. 100.50 KES) are
+// not supported and will return an error; callers must round or adjust amounts before charging.
+// Amounts below 1 KES or currencies other than KES are rejected. The phone number is automatically
+// validated and normalized to 12-digit E.164 format.
 //
 // On successful initiation, Charge returns StatusPendingAction along with the CheckoutRequestID,
 // indicating that the customer has been prompted on their phone to enter their M-Pesa PIN.
@@ -176,6 +180,9 @@ func (g *Gateway) Charge(ctx context.Context, req *paykit.ChargeRequest) (*payki
 	}
 	if req.Amount.Amount() < 100 {
 		return nil, errors.New("mpesa: charge amount must be at least 1 KES")
+	}
+	if req.Amount.Amount()%100 != 0 {
+		return nil, errors.New("mpesa: amount must be in whole Kenyan Shillings (sub-shilling amounts are not supported by M-Pesa; please round or adjust amount prior to transaction)")
 	}
 
 	amountKES := int(req.Amount.Amount() / 100)
@@ -266,6 +273,7 @@ func (g *Gateway) Charge(ctx context.Context, req *paykit.ChargeRequest) (*payki
 // QueryStatus queries the current state of an initiated STK Push transaction using its CheckoutRequestID.
 //
 // The CheckoutRequestID must be provided either via req.TransactionID or req.Metadata["checkout_request_id"].
+// Success indicates whether the status query call itself completed successfully (ResponseCode "0").
 // The response maps Daraja ResultCodes to normalized paykit.TransactionStatus values:
 //   - "0": StatusSuccess
 //   - "1032": StatusCancelled (customer cancelled on phone)
@@ -320,7 +328,7 @@ func (g *Gateway) QueryStatus(ctx context.Context, req *paykit.StatusRequest) (*
 	rawJSON, _ := json.Marshal(queryResp)
 
 	return &paykit.StatusResponse{
-		Success:       queryResp.ResultCode == "0",
+		Success:       queryResp.ResponseCode == "0",
 		Message:       msg,
 		TransactionID: queryResp.CheckoutRequestID,
 		Status:        status,
@@ -338,6 +346,8 @@ func (g *Gateway) QueryStatus(ctx context.Context, req *paykit.StatusRequest) (*
 
 // Refund initiates a full or partial reversal request for a completed M-Pesa transaction.
 //
+// M-Pesa reversals strictly require an explicit positive amount in whole Kenyan Shillings;
+// sub-shilling fractions or implicit full refunds without an amount are not supported.
 // Initiator credentials and receiver shortcode are loaded from the gateway's Config or
 // can be overridden through req.Metadata keys ("initiator", "security_credential", "receiver_party").
 func (g *Gateway) Refund(ctx context.Context, req *paykit.RefundRequest) (*paykit.RefundResponse, error) {
@@ -348,16 +358,20 @@ func (g *Gateway) Refund(ctx context.Context, req *paykit.RefundRequest) (*payki
 		return nil, errors.New("mpesa: transaction ID is required for refund")
 	}
 
-	amountKES := 0
-	if !req.Amount.IsZero() {
-		if req.Amount.Currency() != "" && req.Amount.Currency() != "KES" {
-			return nil, fmt.Errorf("mpesa: unsupported currency %q (only KES is supported)", req.Amount.Currency())
-		}
-		if req.Amount.Amount() < 100 {
-			return nil, errors.New("mpesa: refund amount must be at least 1 KES")
-		}
-		amountKES = int(req.Amount.Amount() / 100)
+	if req.Amount.IsZero() || req.Amount.Amount() <= 0 {
+		return nil, errors.New("mpesa: refund amount is required; M-Pesa reversals do not support implicit full refunds")
 	}
+	if req.Amount.Currency() != "" && req.Amount.Currency() != "KES" {
+		return nil, fmt.Errorf("mpesa: unsupported currency %q (only KES is supported)", req.Amount.Currency())
+	}
+	if req.Amount.Amount() < 100 {
+		return nil, errors.New("mpesa: refund amount must be at least 1 KES")
+	}
+	if req.Amount.Amount()%100 != 0 {
+		return nil, errors.New("mpesa: refund amount must be in whole Kenyan Shillings (sub-shilling amounts are not supported by M-Pesa)")
+	}
+
+	amountKES := int(req.Amount.Amount() / 100)
 
 	initiator := g.cfg.InitiatorName
 	if req.Metadata != nil && req.Metadata["initiator"] != "" {
@@ -435,7 +449,8 @@ func (g *Gateway) Refund(ctx context.Context, req *paykit.RefundRequest) (*payki
 // Disburse transfers funds from the organization business account to a recipient customer account (B2C).
 //
 // The recipient phone number is normalized to 12-digit E.164 format and the disbursement amount
-// is converted to whole Kenyan Shillings. B2C operations are processed asynchronously by Daraja;
+// must be in whole Kenyan Shillings. Sub-shilling fractions are rejected; callers must round or
+// adjust amounts before submitting. B2C operations are processed asynchronously by Daraja;
 // a successful initiation returns StatusProcessing along with the ConversationID.
 func (g *Gateway) Disburse(ctx context.Context, req *paykit.DisbursementRequest) (*paykit.DisbursementResponse, error) {
 	if req == nil {
@@ -450,6 +465,9 @@ func (g *Gateway) Disburse(ctx context.Context, req *paykit.DisbursementRequest)
 	}
 	if req.Amount.Amount() < 100 {
 		return nil, errors.New("mpesa: disbursement amount must be at least 1 KES")
+	}
+	if req.Amount.Amount()%100 != 0 {
+		return nil, errors.New("mpesa: disbursement amount must be in whole Kenyan Shillings (sub-shilling amounts are not supported by M-Pesa; please round or adjust amount prior to transaction)")
 	}
 
 	amountKES := int(req.Amount.Amount() / 100)

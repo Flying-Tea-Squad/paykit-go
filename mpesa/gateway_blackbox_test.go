@@ -37,6 +37,22 @@ func TestMpesaGateway_CapabilityInterfaceConformance(t *testing.T) {
 				"ResponseCode": "0",
 				"ResponseDescription": "Accepted"
 			}`))
+		case "/mpesa/stkpushquery/v1/query":
+			_, _ = w.Write([]byte(`{
+				"ResponseCode": "0",
+				"ResponseDescription": "Success",
+				"MerchantRequestID": "m-123",
+				"CheckoutRequestID": "ws_CO_123",
+				"ResultCode": "0",
+				"ResultDesc": "The service request is processed successfully."
+			}`))
+		case "/mpesa/reversal/v1/request":
+			_, _ = w.Write([]byte(`{
+				"ConversationID": "AG_REV_999",
+				"OriginatorConversationID": "ORIG_REV_999",
+				"ResponseCode": "0",
+				"ResponseDescription": "Accept the service request successfully"
+			}`))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -112,5 +128,41 @@ func TestMpesaGateway_CapabilityInterfaceConformance(t *testing.T) {
 	}
 	if disbResp.TransactionID != "AG_B2C_999" {
 		t.Errorf("unexpected TransactionID: %s", disbResp.TransactionID)
+	}
+
+	// 5. QueryStatus capability invocation
+	statusResp, err := genericGW.QueryStatus(ctx, &paykit.StatusRequest{
+		TransactionID: "ws_CO_123",
+	})
+	if err != nil {
+		t.Fatalf("QueryStatus failed: %v", err)
+	}
+	if !statusResp.Success {
+		t.Error("expected successful query status response")
+	}
+	if statusResp.Status != paykit.StatusSuccess {
+		t.Errorf("expected StatusSuccess, got %s", statusResp.Status)
+	}
+	if statusResp.TransactionID != "ws_CO_123" {
+		t.Errorf("unexpected TransactionID: %s", statusResp.TransactionID)
+	}
+
+	// 6. Refund capability invocation
+	refundResp, err := genericGW.Refund(ctx, &paykit.RefundRequest{
+		TransactionID: "LK12345678",
+		Amount:        paykit.NewKES(100),
+		Reason:        "Order return",
+	})
+	if err != nil {
+		t.Fatalf("Refund failed: %v", err)
+	}
+	if !refundResp.Success {
+		t.Error("expected successful refund initiation")
+	}
+	if refundResp.Status != paykit.StatusProcessing {
+		t.Errorf("expected StatusProcessing, got %s", refundResp.Status)
+	}
+	if refundResp.RefundID != "AG_REV_999" {
+		t.Errorf("unexpected RefundID: %s", refundResp.RefundID)
 	}
 }

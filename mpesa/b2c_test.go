@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -161,5 +162,30 @@ func TestB2CPayment_HTTPError(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected error on HTTP 502")
+	}
+}
+
+func TestB2CPayment_HTTPErrorWithBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"errorCode":"400.002.02","errorMessage":"Bad Request - Invalid Amount"}`))
+	}))
+	defer server.Close()
+
+	client := &Client{
+		baseURL:      server.URL,
+		httpClient:   testHTTPClient(server.Client()),
+		tokenManager: fakeTokenProvider{},
+	}
+
+	_, err := client.B2CPayment(context.Background(), B2CRequest{
+		InitiatorName:      "init",
+		SecurityCredential: "cred",
+		PartyA:             "600000",
+		PartyB:             "254712345678",
+		Amount:             100,
+	})
+	if err == nil || !strings.Contains(err.Error(), "Invalid Amount") {
+		t.Errorf("expected error containing diagnostic body, got %v", err)
 	}
 }

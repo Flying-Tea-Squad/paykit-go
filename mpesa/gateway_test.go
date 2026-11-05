@@ -230,6 +230,15 @@ func TestGateway_Charge_Validations(t *testing.T) {
 		t.Errorf("expected sub-shilling error, got %v", err)
 	}
 
+	// Sub-shilling remainder cents (e.g. 150 cents = 1.50 KES)
+	_, err = gw.Charge(context.Background(), &paykit.ChargeRequest{
+		Amount: paykit.NewMoney(150, "KES"),
+		Phone:  "0712345678",
+	})
+	if err == nil || !strings.Contains(err.Error(), "sub-shilling amounts are not supported") {
+		t.Errorf("expected sub-shilling remainder error, got %v", err)
+	}
+
 	// Invalid phone number
 	_, err = gw.Charge(context.Background(), &paykit.ChargeRequest{
 		Amount: paykit.NewKES(10),
@@ -254,34 +263,46 @@ func TestGateway_Charge_Validations(t *testing.T) {
 
 func TestGateway_QueryStatus(t *testing.T) {
 	tests := []struct {
-		name       string
-		resultCode string
-		wantStatus paykit.TransactionStatus
-		wantSucc   bool
+		name         string
+		responseCode string
+		resultCode   string
+		wantStatus   paykit.TransactionStatus
+		wantSucc     bool
 	}{
 		{
-			name:       "success",
-			resultCode: "0",
-			wantStatus: paykit.StatusSuccess,
-			wantSucc:   true,
+			name:         "success",
+			responseCode: "0",
+			resultCode:   "0",
+			wantStatus:   paykit.StatusSuccess,
+			wantSucc:     true,
 		},
 		{
-			name:       "cancelled by user",
-			resultCode: "1032",
-			wantStatus: paykit.StatusCancelled,
-			wantSucc:   false,
+			name:         "cancelled by user",
+			responseCode: "0",
+			resultCode:   "1032",
+			wantStatus:   paykit.StatusCancelled,
+			wantSucc:     true,
 		},
 		{
-			name:       "timeout",
-			resultCode: "1037",
-			wantStatus: paykit.StatusTimeout,
-			wantSucc:   false,
+			name:         "timeout",
+			responseCode: "0",
+			resultCode:   "1037",
+			wantStatus:   paykit.StatusTimeout,
+			wantSucc:     true,
 		},
 		{
-			name:       "failed",
-			resultCode: "1",
-			wantStatus: paykit.StatusFailed,
-			wantSucc:   false,
+			name:         "failed",
+			responseCode: "0",
+			resultCode:   "1",
+			wantStatus:   paykit.StatusFailed,
+			wantSucc:     true,
+		},
+		{
+			name:         "query error from daraja",
+			responseCode: "1",
+			resultCode:   "1",
+			wantStatus:   paykit.StatusFailed,
+			wantSucc:     false,
 		},
 	}
 
@@ -291,7 +312,7 @@ func TestGateway_QueryStatus(t *testing.T) {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte(`{
-					"ResponseCode": "0",
+					"ResponseCode": "` + tt.responseCode + `",
 					"ResponseDescription": "Accepted",
 					"MerchantRequestID": "merch-1",
 					"CheckoutRequestID": "ws_CO_999",
@@ -408,9 +429,36 @@ func TestGateway_Refund_Validations(t *testing.T) {
 		t.Errorf("expected missing ID error, got %v", err)
 	}
 
+	// Missing amount (zero amount)
+	_, err = gw.Refund(context.Background(), &paykit.RefundRequest{TransactionID: "LK123"})
+	if err == nil || !strings.Contains(err.Error(), "refund amount is required") {
+		t.Errorf("expected missing amount error, got %v", err)
+	}
+
+	// Amount less than 1 KES
+	_, err = gw.Refund(context.Background(), &paykit.RefundRequest{
+		TransactionID: "LK123",
+		Amount:        paykit.NewMoney(50, "KES"),
+	})
+	if err == nil || !strings.Contains(err.Error(), "at least 1 KES") {
+		t.Errorf("expected sub-shilling min error, got %v", err)
+	}
+
+	// Sub-shilling remainder
+	_, err = gw.Refund(context.Background(), &paykit.RefundRequest{
+		TransactionID: "LK123",
+		Amount:        paykit.NewMoney(150, "KES"),
+	})
+	if err == nil || !strings.Contains(err.Error(), "sub-shilling amounts are not supported") {
+		t.Errorf("expected sub-shilling remainder error, got %v", err)
+	}
+
 	// Missing credentials
 	gwWithID := &Gateway{}
-	_, err = gwWithID.Refund(context.Background(), &paykit.RefundRequest{TransactionID: "LK123"})
+	_, err = gwWithID.Refund(context.Background(), &paykit.RefundRequest{
+		TransactionID: "LK123",
+		Amount:        paykit.NewKES(10),
+	})
 	if err == nil || !strings.Contains(err.Error(), "initiator is required") {
 		t.Errorf("expected missing initiator error, got %v", err)
 	}
@@ -494,6 +542,15 @@ func TestGateway_Disburse_Validations(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "invalid recipient phone") {
 		t.Errorf("expected invalid phone error, got %v", err)
+	}
+
+	// Sub-shilling remainder
+	_, err = gw.Disburse(context.Background(), &paykit.DisbursementRequest{
+		Amount: paykit.NewMoney(150, "KES"),
+		Phone:  "0712345678",
+	})
+	if err == nil || !strings.Contains(err.Error(), "sub-shilling amounts are not supported") {
+		t.Errorf("expected sub-shilling remainder error, got %v", err)
 	}
 
 	// Missing credentials
