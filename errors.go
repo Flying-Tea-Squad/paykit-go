@@ -68,6 +68,8 @@ var gatewayErrorMap = map[string]map[string]string{
 		"SFC_IC_0000006": ErrDailyLimitExceeded,
 		"SFC_IC_0000003": ErrInvalidShortCode,
 	},
+	"airtel":  {},
+	"pesapal": {},
 	"default": {
 		"INVALID_PHONE":      ErrInvalidPhoneNumber,
 		"INSUFFICIENT_FUNDS": ErrInsufficientFunds,
