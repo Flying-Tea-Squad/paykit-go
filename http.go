@@ -50,9 +50,11 @@ const (
 // HTTPClientConfig configures the shared transport client.
 type HTTPClientConfig struct {
 	// ConnectionTimeout specifies the maximum duration waiting for a network dial to complete.
+	// Defaults to 10 seconds.
 	ConnectionTimeout time.Duration
 
 	// RequestTimeout specifies a time limit for requests made by this client.
+	// Defaults to 30 seconds.
 	RequestTimeout time.Duration
 
 	// TLSConfig contains custom TLS client configuration. It is cloned to prevent concurrent mutations.
@@ -64,11 +66,16 @@ type HTTPClientConfig struct {
 	// DumpWriter is an optional writer to which full wire dumps of requests and responses will be written.
 	DumpWriter io.Writer
 
+	// Scrubber is an optional sensitive data scrubber. When nil, NewHTTPClient defaults
+	// to NewDefaultScrubber() to prevent leakage of credentials and PII in wire dumps and logs.
+	Scrubber Scrubber
+
 	// RetryBaseDelay is the initial backoff delay between retry attempts.
+	// Defaults to 100 milliseconds.
 	RetryBaseDelay time.Duration
 
 	// MaxAttempts is the maximum number of attempts (initial attempt + retries) for retryable operations.
-	// Values greater than 3 are clamped to 3.
+	// Values greater than 3 are clamped to 3. Defaults to 3.
 	MaxAttempts int
 
 	// IdempotencyPolicy specifies the handling strategy for mutating requests missing an Idempotency-Key header.
@@ -84,6 +91,7 @@ type HTTPClient struct {
 	client            *http.Client
 	logger            *slog.Logger
 	dumpWriter        io.Writer
+	scrubber          Scrubber
 	dumpMu            sync.Mutex
 	maxAttempts       int
 	retryBaseDelay    time.Duration
@@ -121,13 +129,24 @@ func NewHTTPClient(config HTTPClientConfig) *HTTPClient {
 		transport.TLSClientConfig = config.TLSConfig.Clone()
 	}
 
+	scrubber := config.Scrubber
+	if scrubber == nil {
+		scrubber = NewDefaultScrubber()
+	}
+
+	var logger *slog.Logger
+	if config.Logger != nil {
+		logger = slog.New(NewScrubbingHandler(config.Logger.Handler(), scrubber))
+	}
+
 	return &HTTPClient{
 		client: &http.Client{
 			Timeout:   requestTimeout,
 			Transport: transport,
 		},
-		logger:            config.Logger,
+		logger:            logger,
 		dumpWriter:        config.DumpWriter,
+		scrubber:          scrubber,
 		maxAttempts:       maxAttempts,
 		retryBaseDelay:    retryBaseDelay,
 		idempotencyPolicy: config.IdempotencyPolicy,
@@ -144,10 +163,14 @@ func (c *HTTPClient) SetTransport(rt http.RoundTripper) {
 // It centralizes Idempotency-Key validation, auto-generation, exponential backoff retries with jitter,
 // and audit logging.
 //
-// If the request contains a body and retries are enabled (attempts > 1), req.GetBody
-// must be non-nil so the body can be rewound across retry attempts. Callers constructing
-// requests with standard constructors like http.NewRequestWithContext using bytes.Reader,
-// bytes.Buffer, or strings.Reader will have req.GetBody automatically populated.
+// Side Effects & Caller Responsibilities:
+//   - req.Body is consumed and closed upon request transmission.
+//   - If req has a body and is eligible for retry (idempotent methods or requests
+//     carrying an Idempotency-Key header), req.GetBody must be non-nil so the
+//     payload can be replayed; otherwise Do returns an error before dispatch.
+//     Callers constructing requests with standard constructors like http.NewRequestWithContext
+//     using bytes.Reader, bytes.Buffer, or strings.Reader will have req.GetBody automatically populated.
+//   - The caller is responsible for closing the returned resp.Body when err is nil.
 func (c *HTTPClient) Do(ctx context.Context, req *http.Request) (*http.Response, error) {
 	if req == nil {
 		return nil, fmt.Errorf("paykit: nil http request")
@@ -174,8 +197,9 @@ func (c *HTTPClient) execute(ctx context.Context, req *http.Request) (*http.Resp
 	if c == nil {
 		c = NewHTTPClient(HTTPClientConfig{})
 	}
-	if c.client == nil {
-		c.client = NewHTTPClient(HTTPClientConfig{}).client
+	client := c.client
+	if client == nil {
+		client = NewHTTPClient(HTTPClientConfig{}).client
 	}
 
 	var idempotencyKey string
@@ -200,6 +224,11 @@ func (c *HTTPClient) execute(ctx context.Context, req *http.Request) (*http.Resp
 	attempts := c.maxAttempts
 	if attempts <= 0 || attempts > defaultMaxAttempts {
 		attempts = defaultMaxAttempts
+	}
+
+	retryBaseDelay := c.retryBaseDelay
+	if retryBaseDelay <= 0 {
+		retryBaseDelay = defaultRetryBaseDelay
 	}
 
 	canRetry := isRetryableMethodWithKey(req.Method, idempotencyKey)
@@ -234,7 +263,7 @@ func (c *HTTPClient) execute(ctx context.Context, req *http.Request) (*http.Resp
 			"attempt", attempt,
 		)
 
-		resp, err := c.client.Do(attemptReq)
+		resp, err := client.Do(attemptReq)
 		if err == nil {
 			c.dumpResponse(resp)
 			c.logDebug("received http response",
@@ -253,7 +282,7 @@ func (c *HTTPClient) execute(ctx context.Context, req *http.Request) (*http.Resp
 				retryAfterHeader := resp.Header.Get("Retry-After")
 				delay, ok := parseRetryAfter(retryAfterHeader)
 				if !ok {
-					delay = calculateBackoffWithJitter(c.retryBaseDelay, attempt)
+					delay = calculateBackoffWithJitter(retryBaseDelay, attempt)
 				} else if delay > defaultMaxRetryAfterDelay {
 					delay = defaultMaxRetryAfterDelay
 				}
@@ -287,7 +316,7 @@ func (c *HTTPClient) execute(ctx context.Context, req *http.Request) (*http.Resp
 			}
 		}
 
-		if err := sleepBeforeRetry(ctx, c.retryBaseDelay, attempt); err != nil {
+		if err := sleepBeforeRetry(ctx, retryBaseDelay, attempt); err != nil {
 			if lastErr != nil {
 				return nil, fmt.Errorf("%w: previous request error: %v", err, lastErr)
 			}
@@ -338,6 +367,9 @@ func shouldRetryResponse(resp *http.Response) bool {
 	return resp.StatusCode >= http.StatusInternalServerError
 }
 
+// shouldRetryError reports whether a transport error warrants a retry.
+// Context cancellation, deadline expiry, TLS certificate errors, and permanent
+// DNS failures are not retried because they will not resolve on the next attempt.
 func shouldRetryError(err error) bool {
 	if err == nil {
 		return false
@@ -347,10 +379,12 @@ func shouldRetryError(err error) bool {
 	}
 	var urlErr *url.Error
 	if errors.As(err, &urlErr) {
+		// TLS certificate errors are configuration problems, not transient failures.
 		var certErr x509.CertificateInvalidError
 		if errors.As(urlErr.Err, &certErr) {
 			return false
 		}
+		// Permanent DNS failures (e.g. unknown host) will not change on retry.
 		var dnsErr *net.DNSError
 		if errors.As(urlErr.Err, &dnsErr) && !dnsErr.Temporary() {
 			return false
@@ -359,6 +393,9 @@ func shouldRetryError(err error) bool {
 	return true
 }
 
+// parseRetryAfter parses the value of a Retry-After response header.
+// It supports both delay-seconds (e.g. "120") and HTTP-date formats.
+// Returns false if the header is empty or cannot be parsed.
 func parseRetryAfter(header string) (time.Duration, bool) {
 	if header == "" {
 		return 0, false
@@ -438,6 +475,11 @@ func (c *HTTPClient) dumpRequest(req *http.Request) {
 		c.logDebug("failed to dump http request", "error", err)
 		return
 	}
+	scrubber := c.scrubber
+	if scrubber == nil {
+		scrubber = NewDefaultScrubber()
+	}
+	dump = []byte(scrubber.Scrub(string(dump)))
 	_, _ = c.dumpWriter.Write(dump)
 	_, _ = c.dumpWriter.Write([]byte("\n"))
 }
@@ -454,6 +496,11 @@ func (c *HTTPClient) dumpResponse(resp *http.Response) {
 		c.logDebug("failed to dump http response", "error", err)
 		return
 	}
+	scrubber := c.scrubber
+	if scrubber == nil {
+		scrubber = NewDefaultScrubber()
+	}
+	dump = []byte(scrubber.Scrub(string(dump)))
 	_, _ = c.dumpWriter.Write(dump)
 	_, _ = c.dumpWriter.Write([]byte("\n"))
 }
