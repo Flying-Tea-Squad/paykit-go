@@ -24,7 +24,7 @@ type CollectionTransaction struct {
 }
 
 // CollectionRequest represents a payment collection request (USSD push).
-// POST /merchant/v2/payments/
+// POST /merchant/v1/payments/
 //
 // The subscriber and transaction objects mirror the Airtel Money Open API structure.
 // Amount is sent as a string in major units per the API specification.
@@ -34,17 +34,23 @@ type CollectionRequest struct {
 	Transaction CollectionTransaction `json:"transaction"`
 }
 
+// CollectionResponseData represents the data portion of a collection response.
+type CollectionResponseData struct {
+	Transaction CollectionResponseTransaction `json:"transaction"`
+}
+
+// CollectionResponseTransaction represents the transaction in a collection response.
+type CollectionResponseTransaction struct {
+	ID         string `json:"id"`
+	Status     string `json:"status"`
+	Message    string `json:"message,omitempty"`
+	StatusCode string `json:"statusCode,omitempty"`
+}
+
 // CollectionResponse represents the response from a payment collection request.
 type CollectionResponse struct {
-	Status StatusEnvelope `json:"status"`
-	Data   struct {
-		Transaction struct {
-			ID         string `json:"id"`
-			Status     string `json:"status"`
-			Message    string `json:"message,omitempty"`
-			StatusCode string `json:"statusCode,omitempty"`
-		} `json:"transaction"`
-	} `json:"data"`
+	Status StatusEnvelope        `json:"status"`
+	Data   CollectionResponseData `json:"data"`
 }
 
 // Payee represents a payee (recipient) in a disbursement request.
@@ -66,29 +72,34 @@ type DisbursementTransaction struct {
 }
 
 // DisbursementRequest represents a disbursement/payout request.
-// POST /standard/v2/disbursements/
+// POST /standard/v1/disbursements/ (v2 also exists)
 //
-// The official Airtel Money developer portal documents this as
-// POST /standard/v1/disbursements/ (or v2) with a "payee" object and merchant "pin".
+// The request uses a "payee" object and requires the merchant "pin".
 type DisbursementRequest struct {
-	Reference   string                  `json:"reference"`
-	PIN         string                  `json:"pin"`
-	Payee       Payee                   `json:"payee"`
-	Transaction DisbursementTransaction `json:"transaction"`
+	Reference   string                   `json:"reference"`
+	PIN         string                   `json:"pin"`
+	Payee       Payee                    `json:"payee"`
+	Transaction DisbursementTransaction  `json:"transaction"`
+}
+
+// DisbursementResponseData represents the data portion of a disbursement response.
+type DisbursementResponseData struct {
+	Transaction DisbursementResponseTransaction `json:"transaction"`
+}
+
+// DisbursementResponseTransaction represents the transaction in a disbursement response.
+type DisbursementResponseTransaction struct {
+	ID            string `json:"id"`
+	Status        string `json:"status"`
+	StatusCode    string `json:"statusCode,omitempty"`
+	Message       string `json:"message,omitempty"`
+	TransactionID string `json:"transactionId,omitempty"`
 }
 
 // DisbursementResponse represents the response from a disbursement request.
 type DisbursementResponse struct {
-	Status StatusEnvelope `json:"status"`
-	Data   struct {
-		Transaction struct {
-			ID            string `json:"id"`
-			Status        string `json:"status"`
-			StatusCode    string `json:"statusCode,omitempty"`
-			Message       string `json:"message,omitempty"`
-			TransactionID string `json:"transactionId,omitempty"`
-		} `json:"transaction"`
-	} `json:"data"`
+	Status StatusEnvelope           `json:"status"`
+	Data   DisbursementResponseData `json:"data"`
 }
 
 // TransactionStatusRequest represents a transaction status query request.
@@ -100,30 +111,31 @@ type TransactionStatusRequest struct {
 	TransactionID string
 }
 
+// TransactionStatusTransaction represents the transaction in a transaction status response.
+type TransactionStatusTransaction struct {
+	AirtelMoneyID string `json:"airtel_money_id,omitempty"`
+	ID            string `json:"id"`
+	Message       string `json:"message,omitempty"`
+	Status        string `json:"status"`
+	StatusCode    string `json:"statusCode,omitempty"`
+}
+
 // TransactionStatusData represents the data portion of a transaction status response.
 type TransactionStatusData struct {
-	Transaction struct {
-		AirtelMoneyID string `json:"airtel_money_id,omitempty"`
-		ID            string `json:"id"`
-		Message       string `json:"message,omitempty"`
-		Status        string `json:"status"`
-		StatusCode    string `json:"statusCode,omitempty"`
-	} `json:"transaction"`
+	Transaction TransactionStatusTransaction `json:"transaction"`
 }
 
 // TransactionStatusResponse represents the response from a transaction status query.
 type TransactionStatusResponse struct {
-	Status StatusEnvelope        `json:"status"`
+	Status StatusEnvelope      `json:"status"`
 	Data   TransactionStatusData `json:"data"`
 }
 
 // ReconciliationRequest represents a reconciliation query request.
 //
-// NOTE: The Airtel Money Open API does not expose a single, well-documented
-// "reconciliation" endpoint in the public developer portal. This type is a
-// best-effort design based on common reconciliation patterns (date range + optional
-// transaction reference filter). The actual endpoint and payload may differ;
-// adjust when the provider publishes definitive docs.
+// NOTE: Airtel's public Open API has no standalone reconciliation endpoint;
+// reconciliation is done via transaction status queries or settlement reports.
+// These types are provisional and may be refined or deprecated in later milestones.
 type ReconciliationRequest struct {
 	// FromDate is the start of the reconciliation window (RFC3339 date).
 	FromDate string `json:"fromDate"`
@@ -135,33 +147,41 @@ type ReconciliationRequest struct {
 	TransactionID string `json:"transactionId,omitempty"`
 }
 
+// ReconciliationTransaction represents a single transaction in a reconciliation response.
+type ReconciliationTransaction struct {
+	ID         string `json:"id"`
+	Reference  string `json:"reference,omitempty"`
+	Status     string `json:"status"`
+	StatusCode string `json:"statusCode,omitempty"`
+	Amount     string `json:"amount,omitempty"`
+	Currency   string `json:"currency,omitempty"`
+	MSISDN     string `json:"msisdn,omitempty"`
+	Timestamp  string `json:"timestamp,omitempty"`
+	Type       string `json:"type,omitempty"` // e.g., "Collection", "Disbursement"
+}
+
+// ReconciliationSummary provides aggregate totals for the reconciliation period.
+type ReconciliationSummary struct {
+	TotalCount      int    `json:"totalCount,omitempty"`
+	TotalAmount     string `json:"totalAmount,omitempty"`
+	Currency        string `json:"currency,omitempty"`
+	SuccessfulCount int    `json:"successfulCount,omitempty"`
+	FailedCount     int    `json:"failedCount,omitempty"`
+	PendingCount    int    `json:"pendingCount,omitempty"`
+}
+
+// ReconciliationResponseData represents the data portion of a reconciliation response.
+type ReconciliationResponseData struct {
+	Transactions []ReconciliationTransaction `json:"transactions"`
+	Summary      *ReconciliationSummary      `json:"summary,omitempty"`
+}
+
 // ReconciliationResponse represents the response from a reconciliation query.
 //
-// NOTE: As with ReconciliationRequest, the response shape is inferred from
-// common patterns. The provider's actual response may include different fields
-// or nesting. Update when definitive documentation is available.
+// NOTE: Airtel's public Open API has no standalone reconciliation endpoint;
+// reconciliation is done via transaction status queries or settlement reports.
+// These types are provisional and may be refined or deprecated in later milestones.
 type ReconciliationResponse struct {
-	Status StatusEnvelope `json:"status"`
-	Data   struct {
-		Transactions []struct {
-			ID         string `json:"id"`
-			Reference  string `json:"reference,omitempty"`
-			Status     string `json:"status"`
-			StatusCode string `json:"statusCode,omitempty"`
-			Amount     string `json:"amount,omitempty"`
-			Currency   string `json:"currency,omitempty"`
-			MSISDN     string `json:"msisdn,omitempty"`
-			Timestamp  string `json:"timestamp,omitempty"`
-			Type       string `json:"type,omitempty"` // e.g., "Collection", "Disbursement"
-		} `json:"transactions"`
-		// Summary provides aggregate totals for the reconciliation period.
-		Summary struct {
-			TotalCount      int    `json:"totalCount,omitempty"`
-			TotalAmount     string `json:"totalAmount,omitempty"`
-			Currency        string `json:"currency,omitempty"`
-			SuccessfulCount int    `json:"successfulCount,omitempty"`
-			FailedCount     int    `json:"failedCount,omitempty"`
-			PendingCount    int    `json:"pendingCount,omitempty"`
-		} `json:"summary,omitempty"`
-	} `json:"data"`
+	Status StatusEnvelope            `json:"status"`
+	Data   ReconciliationResponseData `json:"data"`
 }
