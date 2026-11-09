@@ -67,6 +67,9 @@ type stkPushCallbackItem struct {
 
 // ParseSTKPushCallback parses a Safaricom STK Push callback payload.
 //
+// Integral amounts formatted as JSON numbers with trailing decimal places (such
+// as 1.00) are accepted, while fractional amounts are rejected.
+//
 // Successful callbacks (ResultCode == 0) will always have all the named fields
 // filled out.
 func ParseSTKPushCallback(data []byte) (*STKPushCallbackResult, error) {
@@ -151,9 +154,14 @@ func populateSTKPushCallbackMetadata(callback *stkPushCallback, result *STKPushC
 
 		// Preserve raw JSON values so callers can unmarshal into their own
 		// types. This makes the parser forward-compatible with additional
-		// Daraja items.
-		if len(item.Value) == 0 {
-			return fmt.Errorf("metadata item %q is missing Value", item.Name)
+		// Daraja items. Empty or null values are tolerated and skipped for
+		// non-mandatory items, but rejected for mandatory items.
+		trimmedValue := bytes.TrimSpace(item.Value)
+		if len(trimmedValue) == 0 || bytes.Equal(trimmedValue, []byte("null")) {
+			if isMandatoryMetadataItem(item.Name) {
+				return fmt.Errorf("metadata item %q is missing Value", item.Name)
+			}
+			continue
 		}
 		result.ReferenceData[item.Name] = bytes.Clone(item.Value)
 
@@ -200,16 +208,59 @@ func populateSTKPushCallbackMetadata(callback *stkPushCallback, result *STKPushC
 	return nil
 }
 
+func isMandatoryMetadataItem(name string) bool {
+	switch name {
+	case "Amount", "MpesaReceiptNumber", "PhoneNumber":
+		return true
+	default:
+		return false
+	}
+}
+
 func parseSTKPushCallbackAmount(data json.RawMessage) (int, error) {
-	var amount int
-	if err := json.Unmarshal(data, &amount); err != nil {
+	var raw any
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	if err := decoder.Decode(&raw); err != nil {
 		return 0, errors.New("metadata item \"Amount\" must be a whole number")
 	}
-	if amount <= 0 {
+
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		return 0, errors.New("metadata item \"Amount\" must be a whole number")
+	}
+
+	num, ok := raw.(json.Number)
+	if !ok {
+		return 0, errors.New("metadata item \"Amount\" must be a whole number")
+	}
+
+	s := num.String()
+	if strings.ContainsAny(s, "eE") {
+		return 0, errors.New("metadata item \"Amount\" must be a whole number")
+	}
+
+	intPart, decPart, hasDec := strings.Cut(s, ".")
+	if hasDec {
+		if len(decPart) == 0 {
+			return 0, errors.New("metadata item \"Amount\" must be a whole number")
+		}
+		for i := 0; i < len(decPart); i++ {
+			if decPart[i] != '0' {
+				return 0, errors.New("metadata item \"Amount\" must be a whole number")
+			}
+		}
+	}
+
+	val, err := strconv.ParseInt(intPart, 10, strconv.IntSize)
+	if err != nil {
+		return 0, errors.New("metadata item \"Amount\" must be a whole number")
+	}
+	if val <= 0 {
 		return 0, errors.New("metadata item \"Amount\" must be greater than zero")
 	}
 
-	return amount, nil
+	return int(val), nil
 }
 
 func parseSTKPushCallbackString(data json.RawMessage, name string) (string, error) {

@@ -173,6 +173,110 @@ func TestParseSTKPushCallback(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "decimal amount with trailing zeros",
+			payload: `{
+				"Body": {
+					"stkCallback": {
+						"MerchantRequestID": "merchant-request-id",
+						"CheckoutRequestID": "checkout-request-id",
+						"ResultCode": 0,
+						"ResultDesc": "Success",
+						"CallbackMetadata": {
+							"Item": [
+								{"Name": "Amount", "Value": 1.00},
+								{"Name": "MpesaReceiptNumber", "Value": "DECIMAL1"},
+								{"Name": "PhoneNumber", "Value": 254700000000}
+							]
+						}
+					}
+				}
+			}`,
+			want: &STKPushCallbackResult{
+				MerchantRequestID: "merchant-request-id",
+				CheckoutRequestID: "checkout-request-id",
+				ResultCode:        0,
+				ResultDesc:        "Success",
+				Msisdn:            "254700000000",
+				Amount:            1,
+				TransactionID:     "DECIMAL1",
+				ReferenceData: map[string]json.RawMessage{
+					"Amount":             json.RawMessage("1.00"),
+					"MpesaReceiptNumber": json.RawMessage(`"DECIMAL1"`),
+					"PhoneNumber":        json.RawMessage("254700000000"),
+				},
+			},
+		},
+		{
+			name: "empty optional metadata item",
+			payload: `{
+				"Body": {
+					"stkCallback": {
+						"MerchantRequestID": "merchant-request-id",
+						"CheckoutRequestID": "checkout-request-id",
+						"ResultCode": 0,
+						"ResultDesc": "Success",
+						"CallbackMetadata": {
+							"Item": [
+								{"Name": "Amount", "Value": 250},
+								{"Name": "MpesaReceiptNumber", "Value": "EMPTYBAL1"},
+								{"Name": "PhoneNumber", "Value": 254700000000},
+								{"Name": "Balance"}
+							]
+						}
+					}
+				}
+			}`,
+			want: &STKPushCallbackResult{
+				MerchantRequestID: "merchant-request-id",
+				CheckoutRequestID: "checkout-request-id",
+				ResultCode:        0,
+				ResultDesc:        "Success",
+				Msisdn:            "254700000000",
+				Amount:            250,
+				TransactionID:     "EMPTYBAL1",
+				ReferenceData: map[string]json.RawMessage{
+					"Amount":             json.RawMessage("250"),
+					"MpesaReceiptNumber": json.RawMessage(`"EMPTYBAL1"`),
+					"PhoneNumber":        json.RawMessage("254700000000"),
+				},
+			},
+		},
+		{
+			name: "null optional metadata item",
+			payload: `{
+				"Body": {
+					"stkCallback": {
+						"MerchantRequestID": "merchant-request-id",
+						"CheckoutRequestID": "checkout-request-id",
+						"ResultCode": 0,
+						"ResultDesc": "Success",
+						"CallbackMetadata": {
+							"Item": [
+								{"Name": "Amount", "Value": 250},
+								{"Name": "MpesaReceiptNumber", "Value": "NULLBAL1"},
+								{"Name": "PhoneNumber", "Value": 254700000000},
+								{"Name": "Balance", "Value": null}
+							]
+						}
+					}
+				}
+			}`,
+			want: &STKPushCallbackResult{
+				MerchantRequestID: "merchant-request-id",
+				CheckoutRequestID: "checkout-request-id",
+				ResultCode:        0,
+				ResultDesc:        "Success",
+				Msisdn:            "254700000000",
+				Amount:            250,
+				TransactionID:     "NULLBAL1",
+				ReferenceData: map[string]json.RawMessage{
+					"Amount":             json.RawMessage("250"),
+					"MpesaReceiptNumber": json.RawMessage(`"NULLBAL1"`),
+					"PhoneNumber":        json.RawMessage("254700000000"),
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -416,15 +520,39 @@ func TestParseSTKPushCallbackMetadataValidation(t *testing.T) {
 			wantErr:    `metadata item "Amount" must be greater than zero`,
 		},
 		{
+			name:       "amount is zero decimal",
+			resultCode: 0,
+			metadata:   testSTKCallbackMetadata(`{"Name": "Amount", "Value": 0.00}`),
+			wantErr:    `metadata item "Amount" must be greater than zero`,
+		},
+		{
 			name:       "amount is negative",
 			resultCode: 0,
 			metadata:   testSTKCallbackMetadata(`{"Name": "Amount", "Value": -1}`),
 			wantErr:    `metadata item "Amount" must be greater than zero`,
 		},
 		{
+			name:       "amount is negative decimal",
+			resultCode: 0,
+			metadata:   testSTKCallbackMetadata(`{"Name": "Amount", "Value": -1.00}`),
+			wantErr:    `metadata item "Amount" must be greater than zero`,
+		},
+		{
 			name:       "amount is fractional",
 			resultCode: 0,
 			metadata:   testSTKCallbackMetadata(`{"Name": "Amount", "Value": 1.5}`),
+			wantErr:    `metadata item "Amount" must be a whole number`,
+		},
+		{
+			name:       "amount is fractional with trailing zeros",
+			resultCode: 0,
+			metadata:   testSTKCallbackMetadata(`{"Name": "Amount", "Value": 1.50}`),
+			wantErr:    `metadata item "Amount" must be a whole number`,
+		},
+		{
+			name:       "amount has scientific notation",
+			resultCode: 0,
+			metadata:   testSTKCallbackMetadata(`{"Name": "Amount", "Value": 1e2}`),
 			wantErr:    `metadata item "Amount" must be a whole number`,
 		},
 		{
@@ -470,10 +598,40 @@ func TestParseSTKPushCallbackMetadataValidation(t *testing.T) {
 			wantErr:    "metadata item has an empty Name",
 		},
 		{
-			name:       "metadata item has no value",
+			name:       "mandatory metadata item Amount has no value",
 			resultCode: 0,
-			metadata:   testSTKCallbackMetadata(`{"Name": "FutureField"}`),
-			wantErr:    `metadata item "FutureField" is missing Value`,
+			metadata:   testSTKCallbackMetadata(`{"Name": "Amount"}`),
+			wantErr:    `metadata item "Amount" is missing Value`,
+		},
+		{
+			name:       "mandatory metadata item Amount has null value",
+			resultCode: 0,
+			metadata:   testSTKCallbackMetadata(`{"Name": "Amount", "Value": null}`),
+			wantErr:    `metadata item "Amount" is missing Value`,
+		},
+		{
+			name:       "mandatory metadata item MpesaReceiptNumber has no value",
+			resultCode: 0,
+			metadata:   testSTKCallbackMetadata(`{"Name": "MpesaReceiptNumber"}`),
+			wantErr:    `metadata item "MpesaReceiptNumber" is missing Value`,
+		},
+		{
+			name:       "mandatory metadata item MpesaReceiptNumber has null value",
+			resultCode: 0,
+			metadata:   testSTKCallbackMetadata(`{"Name": "MpesaReceiptNumber", "Value": null}`),
+			wantErr:    `metadata item "MpesaReceiptNumber" is missing Value`,
+		},
+		{
+			name:       "mandatory metadata item PhoneNumber has no value",
+			resultCode: 0,
+			metadata:   testSTKCallbackMetadata(`{"Name": "PhoneNumber"}`),
+			wantErr:    `metadata item "PhoneNumber" is missing Value`,
+		},
+		{
+			name:       "mandatory metadata item PhoneNumber has null value",
+			resultCode: 0,
+			metadata:   testSTKCallbackMetadata(`{"Name": "PhoneNumber", "Value": null}`),
+			wantErr:    `metadata item "PhoneNumber" is missing Value`,
 		},
 		{
 			name:       "metadata item name is duplicated",
@@ -540,6 +698,23 @@ func TestParseSTKPushCallbackUnsuccessfulOutcomes(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "failed payment with empty balance item",
+			payload: testSTKCallbackPayload(1032, testSTKCallbackMetadata(`
+				{"Name": "Amount", "Value": 25},
+				{"Name": "Balance"}
+			`)),
+			expected: &STKPushCallbackResult{
+				MerchantRequestID: "merchant-request-id",
+				CheckoutRequestID: "checkout-request-id",
+				ResultCode:        1032,
+				ResultDesc:        "test result",
+				Amount:            25,
+				ReferenceData: map[string]json.RawMessage{
+					"Amount": json.RawMessage("25"),
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -551,6 +726,133 @@ func TestParseSTKPushCallbackUnsuccessfulOutcomes(t *testing.T) {
 
 			if !reflect.DeepEqual(result, tt.expected) {
 				t.Errorf("ParseSTKPushCallback() = %#v, want %#v", result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestParseSTKPushCallbackAmount(t *testing.T) {
+	tests := []struct {
+		name    string
+		data    json.RawMessage
+		want    int
+		wantErr string
+	}{
+		{
+			name: "integral whole number",
+			data: json.RawMessage("1"),
+			want: 1,
+		},
+		{
+			name: "integral decimal with single zero",
+			data: json.RawMessage("1.0"),
+			want: 1,
+		},
+		{
+			name: "integral decimal with two zeros",
+			data: json.RawMessage("1.00"),
+			want: 1,
+		},
+		{
+			name: "integral decimal with multiple zeros",
+			data: json.RawMessage("500.0000"),
+			want: 500,
+		},
+		{
+			name: "large integral decimal",
+			data: json.RawMessage("100000.00"),
+			want: 100000,
+		},
+		{
+			name:    "fractional amount",
+			data:    json.RawMessage("1.50"),
+			wantErr: `metadata item "Amount" must be a whole number`,
+		},
+		{
+			name:    "fractional amount without trailing zero",
+			data:    json.RawMessage("1.5"),
+			wantErr: `metadata item "Amount" must be a whole number`,
+		},
+		{
+			name:    "fractional amount with small fraction",
+			data:    json.RawMessage("1.0001"),
+			wantErr: `metadata item "Amount" must be a whole number`,
+		},
+		{
+			name:    "quoted string amount",
+			data:    json.RawMessage(`"100"`),
+			wantErr: `metadata item "Amount" must be a whole number`,
+		},
+		{
+			name:    "quoted decimal string amount",
+			data:    json.RawMessage(`"1.00"`),
+			wantErr: `metadata item "Amount" must be a whole number`,
+		},
+		{
+			name:    "boolean amount",
+			data:    json.RawMessage("true"),
+			wantErr: `metadata item "Amount" must be a whole number`,
+		},
+		{
+			name:    "null amount",
+			data:    json.RawMessage("null"),
+			wantErr: `metadata item "Amount" must be a whole number`,
+		},
+		{
+			name:    "empty raw message",
+			data:    json.RawMessage(""),
+			wantErr: `metadata item "Amount" must be a whole number`,
+		},
+		{
+			name:    "zero amount",
+			data:    json.RawMessage("0"),
+			wantErr: `metadata item "Amount" must be greater than zero`,
+		},
+		{
+			name:    "zero decimal amount",
+			data:    json.RawMessage("0.00"),
+			wantErr: `metadata item "Amount" must be greater than zero`,
+		},
+		{
+			name:    "negative amount",
+			data:    json.RawMessage("-1"),
+			wantErr: `metadata item "Amount" must be greater than zero`,
+		},
+		{
+			name:    "negative decimal amount",
+			data:    json.RawMessage("-1.00"),
+			wantErr: `metadata item "Amount" must be greater than zero`,
+		},
+		{
+			name:    "scientific notation",
+			data:    json.RawMessage("1e2"),
+			wantErr: `metadata item "Amount" must be a whole number`,
+		},
+		{
+			name:    "overflow integer",
+			data:    json.RawMessage("999999999999999999999999999999999999999999999999999999999999"),
+			wantErr: `metadata item "Amount" must be a whole number`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseSTKPushCallbackAmount(tt.data)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("parseSTKPushCallbackAmount(%s) = %d, want error containing %q", string(tt.data), got, tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("parseSTKPushCallbackAmount(%s) error = %q, want error containing %q", string(tt.data), err, tt.wantErr)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("parseSTKPushCallbackAmount(%s) unexpected error: %v", string(tt.data), err)
+			}
+			if got != tt.want {
+				t.Errorf("parseSTKPushCallbackAmount(%s) = %d, want %d", string(tt.data), got, tt.want)
 			}
 		})
 	}
