@@ -2,7 +2,6 @@ package paykit
 
 import (
 	"encoding/json"
-	"time"
 )
 
 // ChargeResponse represents the result of a charge initiation.
@@ -116,43 +115,6 @@ type BalanceResponse struct {
 	Raw json.RawMessage `json:"raw,omitempty"`
 
 	// Metadata holds auxiliary balance properties.
-	Metadata map[string]any `json:"metadata,omitempty"`
-}
-
-// Event represents a normalized incoming asynchronous notification from a payment provider
-// (such as an STK Push callback, B2C result notification, or Pesapal IPN).
-type Event struct {
-	// ID is the unique event delivery identifier (if provided by the webhook source).
-	ID string `json:"id,omitempty"`
-
-	// Provider identifies the originating payment gateway (e.g. "mpesa", "airtel", "pesapal").
-	Provider string `json:"provider"`
-
-	// Type specifies the event category (e.g. "charge.completed", "disbursement.failed").
-	Type string `json:"type"`
-
-	// TransactionID is the provider's unique settlement transaction identifier.
-	TransactionID string `json:"transaction_id,omitempty"`
-
-	// Reference is the merchant's tracking or account reference.
-	Reference string `json:"reference,omitempty"`
-
-	// Status is the normalized transaction status.
-	Status TransactionStatus `json:"status,omitempty"`
-
-	// Amount is the transferred sum as Money.
-	Amount Money `json:"amount,omitempty"`
-
-	// Phone is the customer or recipient MSISDN in E.164.
-	Phone string `json:"phone,omitempty"`
-
-	// Timestamp is the recorded settlement time.
-	Timestamp time.Time `json:"timestamp,omitempty"`
-
-	// Raw contains the unparsed incoming callback body for auditing.
-	Raw json.RawMessage `json:"raw,omitempty"`
-
-	// Metadata holds provider-specific webhook fields.
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 

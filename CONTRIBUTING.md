@@ -137,7 +137,7 @@ paykit-go/
 ├── mpesa/            # Safaricom M-Pesa provider adapter and client
 ├── airtel/           # Airtel Money provider adapter and client
 ├── pesapal/          # Pesapal provider adapter and client
-├── callback/         # Shared webhook and callback parsing/verification utilities
+├── webhook/          # Webhook receiver and verification utilities
 ├── driver/           # Import-all entrypoint for drivers
 └── docs/             # Architecture decision records and specifications
 ```
@@ -222,13 +222,13 @@ Common types include:
 
 Common scopes include:
 
-- `mpesa`, `airtel`, `pesapal`, `gateway`, `callback`, `http`, `core`, `types`.
+- `mpesa`, `airtel`, `pesapal`, `gateway`, `webhook`, `http`, `core`, `types`.
 
 Examples:
 
 ```terminal
 feat(mpesa): add OAuth token caching
-fix(callback): validate callback signature
+fix(webhook): validate webhook signature
 docs: update contributing guide and pr template
 test(mpesa): add stk push fixtures
 refactor(http): simplify retry logic
@@ -287,9 +287,10 @@ When implementing a new payment provider:
 2. Implement the shared capability interfaces (`Gateway`, `Disburser`, `WebhookHandler`, etc.) as defined in `gateway.go`.
 3. Handle provider authentication internally (e.g., token management, caching, signature generation).
 4. Normalize vendor responses into common PayKit-Go response types (`ChargeResponse`, `StatusResponse`, etc.).
-5. Include deterministic test fixtures and mocked HTTP test coverage.
-6. Provide comprehensive blackbox and whitebox tests.
-7. Document provider-specific configuration and register the driver if appropriate.
+5. Map provider-specific error codes to PayKit standard codes by adding a provider namespace entry to `gatewayErrorMap` in `errors.go`. Use the existing PayKit error constants (e.g., `ErrUserCancelled`, `ErrInsufficientFunds`) as values, and introduce new taxonomy constants for error types not yet covered.
+6. Include deterministic test fixtures and mocked HTTP test coverage.
+7. Provide comprehensive blackbox and whitebox tests.
+8. Document provider-specific configuration and register the driver if appropriate.
 
 ---
 

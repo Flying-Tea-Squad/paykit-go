@@ -1,5 +1,6 @@
 package mpesa
 
+// STKPushRequest encapsulates parameters required to initiate an STK Push (Lipa Na M-Pesa Online) customer charge.
 type STKPushRequest struct {
 	IdempotencyKey    string `json:"-"`
 	BusinessShortCode string `json:"BusinessShortCode"`
@@ -15,6 +16,7 @@ type STKPushRequest struct {
 	TransactionDesc   string `json:"TransactionDesc"`
 }
 
+// STKPushResponse represents Daraja's immediate synchronous response to an STK Push initiation.
 type STKPushResponse struct {
 	MerchantRequestID   string `json:"MerchantRequestID"`
 	CheckoutRequestID   string `json:"CheckoutRequestID"`
@@ -23,6 +25,26 @@ type STKPushResponse struct {
 	CustomerMessage     string `json:"CustomerMessage"`
 }
 
+// STKPushQueryRequest encapsulates parameters required to query the status of an STK Push transaction.
+type STKPushQueryRequest struct {
+	IdempotencyKey    string `json:"-"`
+	BusinessShortCode string `json:"BusinessShortCode"`
+	Password          string `json:"Password"`
+	Timestamp         string `json:"Timestamp"`
+	CheckoutRequestID string `json:"CheckoutRequestID"`
+}
+
+// STKPushQueryResponse represents Daraja's response to an STK Push query request.
+type STKPushQueryResponse struct {
+	ResponseCode        string `json:"ResponseCode"`
+	ResponseDescription string `json:"ResponseDescription"`
+	MerchantRequestID   string `json:"MerchantRequestID"`
+	CheckoutRequestID   string `json:"CheckoutRequestID"`
+	ResultCode          string `json:"ResultCode"`
+	ResultDesc          string `json:"ResultDesc"`
+}
+
+// C2BRegisterRequest encapsulates configuration parameters for registering C2B validation and confirmation URLs.
 type C2BRegisterRequest struct {
 	IdempotencyKey  string `json:"-"`
 	ShortCode       string `json:"ShortCode"`
@@ -31,6 +53,7 @@ type C2BRegisterRequest struct {
 	ValidationURL   string `json:"ValidationURL"`
 }
 
+// CB2SimulateRequest encapsulates parameters to simulate a C2B transaction in sandbox environments.
 type CB2SimulateRequest struct {
 	IdempotencyKey string `json:"-"`
 	ShortCode      string `json:"ShortCode"`
@@ -40,6 +63,7 @@ type CB2SimulateRequest struct {
 	BillRefNumber  string `json:"BillRefNumber"`
 }
 
+// B2CRequest encapsulates parameters required to initiate a Business-to-Customer (B2C) payout.
 type B2CRequest struct {
 	IdempotencyKey     string `json:"-"`
 	InitiatorName      string `json:"InitiatorName"`
@@ -54,6 +78,7 @@ type B2CRequest struct {
 	Occasion           string `json:"Occasion,omitempty"`
 }
 
+// B2CResponse represents Daraja's immediate acknowledgment of a B2C payment request.
 type B2CResponse struct {
 	ConversationID           string `json:"ConversationID"`
 	OriginatorConversationID string `json:"OriginatorConversationID"`
@@ -61,6 +86,7 @@ type B2CResponse struct {
 	ResponseDescription      string `json:"ResponseDescription"`
 }
 
+// StatusRequest encapsulates parameters required to query the status of an M-Pesa transaction via the transaction status endpoint.
 type StatusRequest struct {
 	IdempotencyKey         string `json:"-"`
 	Initiator              string `json:"Initiator"`
@@ -76,9 +102,34 @@ type StatusRequest struct {
 	Occasion               string `json:"Occasion,omitempty"`
 }
 
+// StatusResponse represents Daraja's immediate acknowledgment of a transaction status query request.
 type StatusResponse struct {
 	OriginatorConversationID string `json:"OriginatorConversationID"`
 	ConversationID           string `json:"ConversationID"`
+	ResponseCode             string `json:"ResponseCode"`
+	ResponseDescription      string `json:"ResponseDescription"`
+}
+
+// ReversalRequest encapsulates parameters required to initiate an M-Pesa transaction reversal.
+type ReversalRequest struct {
+	IdempotencyKey         string `json:"-"`
+	Initiator              string `json:"Initiator"`
+	SecurityCredential     string `json:"SecurityCredential"`
+	CommandID              string `json:"CommandID"`
+	TransactionID          string `json:"TransactionID"`
+	Amount                 int    `json:"Amount"`
+	ReceiverParty          string `json:"ReceiverParty"`
+	RecieverIdentifierType string `json:"RecieverIdentifierType"`
+	ResultURL              string `json:"ResultURL"`
+	QueueTimeOutURL        string `json:"QueueTimeOutURL"`
+	Remarks                string `json:"Remarks"`
+	Occasion               string `json:"Occasion,omitempty"`
+}
+
+// ReversalResponse represents Daraja's immediate acknowledgment of a reversal request.
+type ReversalResponse struct {
+	ConversationID           string `json:"ConversationID"`
+	OriginatorConversationID string `json:"OriginatorConversationID"`
 	ResponseCode             string `json:"ResponseCode"`
 	ResponseDescription      string `json:"ResponseDescription"`
 }
@@ -104,7 +155,7 @@ type BalanceResponse struct {
 	ResponseDescription      string `json:"ResponseDescription"`
 }
 
-// QRRequest encapsulates the configuration for creating an M-PESA dynamic QR code.
+// DynamicQRRequest encapsulates the configuration for creating an M-PESA dynamic QR code.
 type DynamicQRRequest struct {
 	IdempotencyKey string `json:"-"`
 	MerchantName   string `json:"MerchantName"`
