@@ -1,74 +1,91 @@
 package airtel
 
+// StatusEnvelope represents the top-level status object returned by Airtel Money API responses.
+type StatusEnvelope struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Success bool   `json:"success"`
+}
+
+// Subscriber represents a subscriber (payer) in a collection request.
+type Subscriber struct {
+	Country  string `json:"country"`
+	Currency string `json:"currency"`
+	MSISDN   string `json:"msisdn"`
+}
+
+// CollectionTransaction represents the transaction details in a collection request.
+type CollectionTransaction struct {
+	Amount   string `json:"amount"`
+	Country  string `json:"country"`
+	Currency string `json:"currency"`
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+}
+
 // CollectionRequest represents a payment collection request (USSD push).
 // POST /merchant/v2/payments/
 //
 // The subscriber and transaction objects mirror the Airtel Money Open API structure.
 // Amount is sent as a string in major units per the API specification.
-// PIN is optional and depends on merchant configuration.
 type CollectionRequest struct {
-	Reference  string `json:"reference"`
-	Subscriber struct {
-		Country  string `json:"country"`
-		Currency string `json:"currency"`
-		MSISDN   string `json:"msisdn"`
-	} `json:"subscriber"`
-	Transaction struct {
-		Amount   string `json:"amount"`
-		Country  string `json:"country"`
-		Currency string `json:"currency"`
-		ID       string `json:"id"`
-		Type     string `json:"type"`
-	} `json:"transaction"`
-	PIN string `json:"pin,omitempty"`
+	Reference   string                `json:"reference"`
+	Subscriber  Subscriber            `json:"subscriber"`
+	Transaction CollectionTransaction `json:"transaction"`
 }
 
 // CollectionResponse represents the response from a payment collection request.
-// The response envelope contains data.transaction with status details.
 type CollectionResponse struct {
-	Data struct {
+	Status StatusEnvelope `json:"status"`
+	Data   struct {
 		Transaction struct {
-			ID      string `json:"id"`
-			Status  string `json:"status"`
-			Message string `json:"message,omitempty"`
-			// StatusCode is the provider-specific status code (e.g., "00", "02").
+			ID         string `json:"id"`
+			Status     string `json:"status"`
+			Message    string `json:"message,omitempty"`
 			StatusCode string `json:"statusCode,omitempty"`
 		} `json:"transaction"`
 	} `json:"data"`
 }
 
+// Payee represents a payee (recipient) in a disbursement request.
+type Payee struct {
+	Country   string `json:"country"`
+	Currency  string `json:"currency"`
+	MSISDN    string `json:"msisdn"`
+	FirstName string `json:"first_name,omitempty"`
+	LastName  string `json:"last_name,omitempty"`
+}
+
+// DisbursementTransaction represents the transaction details in a disbursement request.
+type DisbursementTransaction struct {
+	Amount   string `json:"amount"`
+	Country  string `json:"country"`
+	Currency string `json:"currency"`
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+}
+
 // DisbursementRequest represents a disbursement/payout request.
 // POST /standard/v2/disbursements/
 //
-// NOTE: The official Airtel Money developer portal documents this as
-// POST /merchant/v2/payouts/ with a "payee" object instead of "subscriber".
-// This struct follows the issue specification using /standard/v2/disbursements/
-// and the subscriber/transaction nesting. Adjust if the provider confirms otherwise.
+// The official Airtel Money developer portal documents this as
+// POST /standard/v1/disbursements/ (or v2) with a "payee" object and merchant "pin".
 type DisbursementRequest struct {
-	Reference  string `json:"reference"`
-	Subscriber struct {
-		Country  string `json:"country"`
-		Currency string `json:"currency"`
-		MSISDN   string `json:"msisdn"`
-	} `json:"subscriber"`
-	Transaction struct {
-		Amount   string `json:"amount"`
-		Country  string `json:"country"`
-		Currency string `json:"currency"`
-		ID       string `json:"id"`
-		Type     string `json:"type"`
-	} `json:"transaction"`
+	Reference   string                  `json:"reference"`
+	PIN         string                  `json:"pin"`
+	Payee       Payee                   `json:"payee"`
+	Transaction DisbursementTransaction `json:"transaction"`
 }
 
 // DisbursementResponse represents the response from a disbursement request.
 type DisbursementResponse struct {
-	Data struct {
+	Status StatusEnvelope `json:"status"`
+	Data   struct {
 		Transaction struct {
-			ID         string `json:"id"`
-			Status     string `json:"status"`
-			StatusCode string `json:"statusCode,omitempty"`
-			Message    string `json:"message,omitempty"`
-			// TransactionID is the provider's unique transaction reference for the payout.
+			ID            string `json:"id"`
+			Status        string `json:"status"`
+			StatusCode    string `json:"statusCode,omitempty"`
+			Message       string `json:"message,omitempty"`
 			TransactionID string `json:"transactionId,omitempty"`
 		} `json:"transaction"`
 	} `json:"data"`
@@ -83,20 +100,21 @@ type TransactionStatusRequest struct {
 	TransactionID string
 }
 
+// TransactionStatusData represents the data portion of a transaction status response.
+type TransactionStatusData struct {
+	Transaction struct {
+		AirtelMoneyID string `json:"airtel_money_id,omitempty"`
+		ID            string `json:"id"`
+		Message       string `json:"message,omitempty"`
+		Status        string `json:"status"`
+		StatusCode    string `json:"statusCode,omitempty"`
+	} `json:"transaction"`
+}
+
 // TransactionStatusResponse represents the response from a transaction status query.
 type TransactionStatusResponse struct {
-	Data struct {
-		Transaction struct {
-			ID         string `json:"id"`
-			Reference  string `json:"reference,omitempty"`
-			Status     string `json:"status"`
-			StatusCode string `json:"statusCode,omitempty"`
-			Amount     string `json:"amount,omitempty"`
-			Currency   string `json:"currency,omitempty"`
-			MSISDN     string `json:"msisdn,omitempty"`
-			Timestamp  string `json:"timestamp,omitempty"`
-		} `json:"transaction"`
-	} `json:"data"`
+	Status StatusEnvelope        `json:"status"`
+	Data   TransactionStatusData `json:"data"`
 }
 
 // ReconciliationRequest represents a reconciliation query request.
@@ -123,7 +141,8 @@ type ReconciliationRequest struct {
 // common patterns. The provider's actual response may include different fields
 // or nesting. Update when definitive documentation is available.
 type ReconciliationResponse struct {
-	Data struct {
+	Status StatusEnvelope `json:"status"`
+	Data   struct {
 		Transactions []struct {
 			ID         string `json:"id"`
 			Reference  string `json:"reference,omitempty"`
