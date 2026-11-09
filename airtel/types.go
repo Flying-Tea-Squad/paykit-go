@@ -49,7 +49,7 @@ type CollectionResponseTransaction struct {
 
 // CollectionResponse represents the response from a payment collection request.
 type CollectionResponse struct {
-	Status StatusEnvelope        `json:"status"`
+	Status StatusEnvelope         `json:"status"`
 	Data   CollectionResponseData `json:"data"`
 }
 
@@ -76,10 +76,10 @@ type DisbursementTransaction struct {
 //
 // The request uses a "payee" object and requires the merchant "pin".
 type DisbursementRequest struct {
-	Reference   string                   `json:"reference"`
-	PIN         string                   `json:"pin"`
-	Payee       Payee                    `json:"payee"`
-	Transaction DisbursementTransaction  `json:"transaction"`
+	Reference   string                  `json:"reference"`
+	PIN         string                  `json:"pin"`
+	Payee       Payee                   `json:"payee"`
+	Transaction DisbursementTransaction `json:"transaction"`
 }
 
 // DisbursementResponseData represents the data portion of a disbursement response.
@@ -127,7 +127,7 @@ type TransactionStatusData struct {
 
 // TransactionStatusResponse represents the response from a transaction status query.
 type TransactionStatusResponse struct {
-	Status StatusEnvelope      `json:"status"`
+	Status StatusEnvelope        `json:"status"`
 	Data   TransactionStatusData `json:"data"`
 }
 
@@ -161,13 +161,14 @@ type ReconciliationTransaction struct {
 }
 
 // ReconciliationSummary provides aggregate totals for the reconciliation period.
+// Count fields omit omitempty to preserve zero values (e.g., pendingCount: 0).
 type ReconciliationSummary struct {
-	TotalCount      int    `json:"totalCount,omitempty"`
+	TotalCount      int    `json:"totalCount"`
 	TotalAmount     string `json:"totalAmount,omitempty"`
 	Currency        string `json:"currency,omitempty"`
-	SuccessfulCount int    `json:"successfulCount,omitempty"`
-	FailedCount     int    `json:"failedCount,omitempty"`
-	PendingCount    int    `json:"pendingCount,omitempty"`
+	SuccessfulCount int    `json:"successfulCount"`
+	FailedCount     int    `json:"failedCount"`
+	PendingCount    int    `json:"pendingCount"`
 }
 
 // ReconciliationResponseData represents the data portion of a reconciliation response.
@@ -182,6 +183,6 @@ type ReconciliationResponseData struct {
 // reconciliation is done via transaction status queries or settlement reports.
 // These types are provisional and may be refined or deprecated in later milestones.
 type ReconciliationResponse struct {
-	Status StatusEnvelope            `json:"status"`
+	Status StatusEnvelope             `json:"status"`
 	Data   ReconciliationResponseData `json:"data"`
 }
