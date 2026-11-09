@@ -103,7 +103,10 @@ func (m Money) Cmp(other Money) int {
 
 // MarshalJSON implements json.Marshaler.
 func (m Money) MarshalJSON() ([]byte, error) {
-	return []byte(fmt.Sprintf(`{"amount":%d,"currency":"%s"}`, m.amount, m.currency)), nil
+	return json.Marshal(struct {
+		Amount   int64  `json:"amount"`
+		Currency string `json:"currency"`
+	}{m.amount, m.currency})
 }
 
 // UnmarshalJSON implements json.Unmarshaler.

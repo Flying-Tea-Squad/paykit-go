@@ -183,6 +183,7 @@ var (
 
    gw, err := paykit.Get("mpesa", cfg)
    ```
+   > **Note**: This snippet reflects an early prototype signature. In the current implementation (`registry.go`), `paykit.Get(name string)` takes no configuration parameters; drivers construct themselves from their own typed config via the `Factory` closure passed to `paykit.Register`. Dynamic registry configuration parameters and driver self-registration remain target contracts tracked in #58 and #34.
 
 ### 4. Transport Layer & Centralized Idempotency Guarantee
 
