@@ -252,8 +252,9 @@ func TestHTTPClient_MutatingMethodWithKey_RetriesOn5xx(t *testing.T) {
 	defer server.Close()
 
 	client := paykit.NewHTTPClient(paykit.HTTPClientConfig{
-		RetryBaseDelay: 10 * time.Millisecond,
-		MaxAttempts:    3,
+		AllowMutatingRetries: true,
+		RetryBaseDelay:       10 * time.Millisecond,
+		MaxAttempts:          3,
 	})
 	client.SetTransport(server.Client().Transport)
 
@@ -279,6 +280,108 @@ func TestHTTPClient_MutatingMethodWithKey_RetriesOn5xx(t *testing.T) {
 	}
 	if totalAttempts := atomic.LoadInt32(&attempts); totalAttempts != 3 {
 		t.Errorf("expected 3 attempts, got: %d", totalAttempts)
+	}
+}
+
+func TestHTTPClient_MutatingMethodWithKey_DefaultDoesNotRetryOn5xx(t *testing.T) {
+	t.Parallel()
+
+	mutatingMethods := []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete}
+	statusCodes := []int{
+		http.StatusInternalServerError,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout,
+	}
+
+	for _, method := range mutatingMethods {
+		for _, status := range statusCodes {
+			method := method
+			status := status
+			t.Run(method+"_"+http.StatusText(status), func(t *testing.T) {
+				t.Parallel()
+
+				var attempts int32
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					atomic.AddInt32(&attempts, 1)
+					w.WriteHeader(status)
+				}))
+				defer server.Close()
+
+				// Default client has AllowMutatingRetries = false
+				client := paykit.NewHTTPClient(paykit.HTTPClientConfig{
+					MaxAttempts:    3,
+					RetryBaseDelay: 10 * time.Millisecond,
+				})
+				client.SetTransport(server.Client().Transport)
+
+				req, err := http.NewRequestWithContext(
+					context.Background(),
+					method,
+					server.URL+"/mutation",
+					strings.NewReader(`{"data":"value"}`),
+				)
+				if err != nil {
+					t.Fatalf("unexpected NewRequest error: %v", err)
+				}
+				req.Header.Set("Idempotency-Key", "custom-key-999")
+
+				resp, err := client.Do(context.Background(), req)
+				if err != nil {
+					t.Fatalf("unexpected Do error: %v", err)
+				}
+				defer func() { _ = resp.Body.Close() }()
+
+				if resp.StatusCode != status {
+					t.Errorf("expected status %d, got: %d", status, resp.StatusCode)
+				}
+				if totalAttempts := atomic.LoadInt32(&attempts); totalAttempts != 1 {
+					t.Errorf("expected exactly 1 attempt without AllowMutatingRetries, got: %d", totalAttempts)
+				}
+			})
+		}
+	}
+}
+
+func TestHTTPClient_MutatingMethod_WithoutKey_OptInDoesNotRetry(t *testing.T) {
+	t.Parallel()
+
+	var attempts int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&attempts, 1)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := paykit.NewHTTPClient(paykit.HTTPClientConfig{
+		IdempotencyPolicy:    paykit.IdempotencyPolicyOptional,
+		AllowMutatingRetries: true,
+		MaxAttempts:          3,
+		RetryBaseDelay:       10 * time.Millisecond,
+	})
+	client.SetTransport(server.Client().Transport)
+
+	req, err := http.NewRequestWithContext(
+		context.Background(),
+		http.MethodPost,
+		server.URL+"/charge-without-key",
+		strings.NewReader(`{"amount":300}`),
+	)
+	if err != nil {
+		t.Fatalf("unexpected NewRequest error: %v", err)
+	}
+
+	resp, err := client.Do(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected Do error: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("expected 500, got: %d", resp.StatusCode)
+	}
+	if totalAttempts := atomic.LoadInt32(&attempts); totalAttempts != 1 {
+		t.Errorf("expected exactly 1 attempt for mutating request without idempotency key even with AllowMutatingRetries: true, got: %d", totalAttempts)
 	}
 }
 

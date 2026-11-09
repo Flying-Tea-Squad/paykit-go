@@ -73,6 +73,7 @@ func TestIsMutatingMethod(t *testing.T) {
 func TestIsRetryableMethod(t *testing.T) {
 	t.Parallel()
 
+	// Default behavior: mutating methods are NEVER retryable, even with Idempotency-Key.
 	tests := []struct {
 		name      string
 		method    string
@@ -80,13 +81,16 @@ func TestIsRetryableMethod(t *testing.T) {
 		retryable bool
 	}{
 		{"GET without key", http.MethodGet, "", true},
-		{"POST with key", http.MethodPost, "key-123", true},
+		{"GET with key", http.MethodGet, "key-123", true},
+		{"HEAD without key", http.MethodHead, "", true},
+		{"OPTIONS without key", http.MethodOptions, "", true},
+		{"POST with key", http.MethodPost, "key-123", false},
 		{"POST without key", http.MethodPost, "", false},
-		{"PUT with key", http.MethodPut, "key-123", true},
+		{"PUT with key", http.MethodPut, "key-123", false},
 		{"PUT without key", http.MethodPut, "", false},
-		{"PATCH with key", http.MethodPatch, "key-123", true},
+		{"PATCH with key", http.MethodPatch, "key-123", false},
 		{"PATCH without key", http.MethodPatch, "", false},
-		{"DELETE with key", http.MethodDelete, "key-123", true},
+		{"DELETE with key", http.MethodDelete, "key-123", false},
 		{"DELETE without key", http.MethodDelete, "", false},
 	}
 
@@ -102,6 +106,130 @@ func TestIsRetryableMethod(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestHTTPClient_IsRetryableMethod_OptIn(t *testing.T) {
+	t.Parallel()
+
+	client := NewHTTPClient(HTTPClientConfig{
+		AllowMutatingRetries: true,
+	})
+
+	tests := []struct {
+		name      string
+		method    string
+		headerKey string
+		retryable bool
+	}{
+		{"GET without key", http.MethodGet, "", true},
+		{"GET with key", http.MethodGet, "key-123", true},
+		{"POST with key", http.MethodPost, "key-123", true},
+		{"POST without key", http.MethodPost, "", false},
+		{"PUT with key", http.MethodPut, "key-123", true},
+		{"PUT without key", http.MethodPut, "", false},
+		{"PATCH with key", http.MethodPatch, "key-123", true},
+		{"PATCH without key", http.MethodPatch, "", false},
+		{"DELETE with key", http.MethodDelete, "key-123", true},
+		{"DELETE without key", http.MethodDelete, "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := client.isRetryableMethod(tt.method, tt.headerKey); got != tt.retryable {
+				t.Errorf("client.isRetryableMethod(%q, %q) = %v, want %v", tt.method, tt.headerKey, got, tt.retryable)
+			}
+		})
+	}
+}
+
+func TestHTTPClient_CanRetry(t *testing.T) {
+	t.Parallel()
+
+	defaultClient := NewHTTPClient(HTTPClientConfig{})
+	optInClient := NewHTTPClient(HTTPClientConfig{AllowMutatingRetries: true})
+
+	makeReq := func(method, key string) *http.Request {
+		req, _ := http.NewRequest(method, "https://example.com/test", nil)
+		if key != "" {
+			req.Header.Set(headerIdempotencyKey, key)
+		}
+		return req
+	}
+
+	makeResp := func(status int) *http.Response {
+		return &http.Response{StatusCode: status}
+	}
+
+	transientErr := errors.New("connection reset by peer")
+
+	t.Run("nil request returns false", func(t *testing.T) {
+		if defaultClient.canRetry(nil, makeResp(500), nil) {
+			t.Error("expected false for nil request")
+		}
+		if canRetry(nil, makeResp(500), nil) {
+			t.Error("expected false for nil request in package canRetry")
+		}
+	})
+
+	t.Run("safe method GET retry evaluation", func(t *testing.T) {
+		req := makeReq(http.MethodGet, "")
+		if !defaultClient.canRetry(req, makeResp(500), nil) {
+			t.Error("expected true for GET on 500")
+		}
+		if !defaultClient.canRetry(req, makeResp(429), nil) {
+			t.Error("expected true for GET on 429")
+		}
+		if !defaultClient.canRetry(req, nil, transientErr) {
+			t.Error("expected true for GET on transient error")
+		}
+		if defaultClient.canRetry(req, makeResp(400), nil) {
+			t.Error("expected false for GET on 400")
+		}
+		if defaultClient.canRetry(req, makeResp(200), nil) {
+			t.Error("expected false for GET on 200")
+		}
+		if defaultClient.canRetry(req, nil, context.Canceled) {
+			t.Error("expected false for GET on context.Canceled")
+		}
+		if defaultClient.canRetry(req, nil, nil) {
+			t.Error("expected false when both resp and err are nil")
+		}
+	})
+
+	t.Run("mutating method POST default client blocks retries even with key", func(t *testing.T) {
+		req := makeReq(http.MethodPost, "idem-key-1")
+		if defaultClient.canRetry(req, makeResp(500), nil) {
+			t.Error("expected false for POST with key on default client under 500")
+		}
+		if defaultClient.canRetry(req, makeResp(429), nil) {
+			t.Error("expected false for POST with key on default client under 429")
+		}
+		if defaultClient.canRetry(req, nil, transientErr) {
+			t.Error("expected false for POST with key on default client under transient error")
+		}
+	})
+
+	t.Run("mutating method POST opt-in client permits retries only with key", func(t *testing.T) {
+		reqWithKey := makeReq(http.MethodPost, "idem-key-1")
+		reqWithoutKey := makeReq(http.MethodPost, "")
+
+		if !optInClient.canRetry(reqWithKey, makeResp(500), nil) {
+			t.Error("expected true for POST with key on opt-in client under 500")
+		}
+		if !optInClient.canRetry(reqWithKey, makeResp(429), nil) {
+			t.Error("expected true for POST with key on opt-in client under 429")
+		}
+		if !optInClient.canRetry(reqWithKey, nil, transientErr) {
+			t.Error("expected true for POST with key on opt-in client under transient error")
+		}
+
+		if optInClient.canRetry(reqWithoutKey, makeResp(500), nil) {
+			t.Error("expected false for POST without key on opt-in client under 500")
+		}
+		if optInClient.canRetry(reqWithoutKey, nil, transientErr) {
+			t.Error("expected false for POST without key on opt-in client under transient error")
+		}
+	})
 }
 
 func TestDumpWriter_RaceSafety(t *testing.T) {

@@ -81,6 +81,16 @@ type HTTPClientConfig struct {
 	// IdempotencyPolicy specifies the handling strategy for mutating requests missing an Idempotency-Key header.
 	// Defaults to IdempotencyPolicyRequire.
 	IdempotencyPolicy IdempotencyPolicy
+
+	// AllowMutatingRetries explicitly permits automated exponential backoff retries on mutating
+	// HTTP methods (POST, PUT, PATCH, DELETE) when idempotent headers or 5xx/network errors occur.
+	//
+	// FINANCIAL SAFETY WARNING:
+	// Most payment networks and aggregators (including Safaricom Daraja) do not natively deduplicate
+	// transactions based on an arbitrary Idempotency-Key HTTP header. Enabling this flag against such
+	// gateways may result in duplicate charges or disbursements if requests are replayed after transient
+	// transport drops or upstream 5xx errors. Defaults to false.
+	AllowMutatingRetries bool
 }
 
 // HTTPClient executes HTTP requests for payment provider clients with production-ready defaults,
@@ -88,14 +98,15 @@ type HTTPClientConfig struct {
 type HTTPClient struct {
 	// Provider implementations hold *HTTPClient as a pointer field rather than embedding
 	// to avoid method promotion, prevent mutex copying, and share connection pools across services.
-	client            *http.Client
-	logger            *slog.Logger
-	dumpWriter        io.Writer
-	scrubber          Scrubber
-	dumpMu            sync.Mutex
-	maxAttempts       int
-	retryBaseDelay    time.Duration
-	idempotencyPolicy IdempotencyPolicy
+	client               *http.Client
+	logger               *slog.Logger
+	dumpWriter           io.Writer
+	scrubber             Scrubber
+	dumpMu               sync.Mutex
+	maxAttempts          int
+	retryBaseDelay       time.Duration
+	idempotencyPolicy    IdempotencyPolicy
+	allowMutatingRetries bool
 }
 
 // NewHTTPClient creates a configured HTTP client suitable for payment gateway transport operations.
@@ -144,12 +155,13 @@ func NewHTTPClient(config HTTPClientConfig) *HTTPClient {
 			Timeout:   requestTimeout,
 			Transport: transport,
 		},
-		logger:            logger,
-		dumpWriter:        config.DumpWriter,
-		scrubber:          scrubber,
-		maxAttempts:       maxAttempts,
-		retryBaseDelay:    retryBaseDelay,
-		idempotencyPolicy: config.IdempotencyPolicy,
+		logger:               logger,
+		dumpWriter:           config.DumpWriter,
+		scrubber:             scrubber,
+		maxAttempts:          maxAttempts,
+		retryBaseDelay:       retryBaseDelay,
+		idempotencyPolicy:    config.IdempotencyPolicy,
+		allowMutatingRetries: config.AllowMutatingRetries,
 	}
 }
 
@@ -231,7 +243,7 @@ func (c *HTTPClient) execute(ctx context.Context, req *http.Request) (*http.Resp
 		retryBaseDelay = defaultRetryBaseDelay
 	}
 
-	canRetry := isRetryableMethodWithKey(req.Method, idempotencyKey)
+	canRetry := c.isRetryableMethod(req.Method, idempotencyKey)
 	hasBody := req.Body != nil && req.Body != http.NoBody
 
 	// When retries are possible and a body is present, GetBody must be non-nil
@@ -275,7 +287,7 @@ func (c *HTTPClient) execute(ctx context.Context, req *http.Request) (*http.Resp
 
 			// 429 Too Many Requests: honor Retry-After header or fall back to jittered backoff
 			if resp.StatusCode == http.StatusTooManyRequests {
-				if !canRetry || attempt == attempts {
+				if !c.canRetry(attemptReq, resp, nil) || attempt == attempts {
 					return resp, nil
 				}
 
@@ -296,7 +308,7 @@ func (c *HTTPClient) execute(ctx context.Context, req *http.Request) (*http.Resp
 				continue
 			}
 
-			if !shouldRetryResponse(resp) || !canRetry || attempt == attempts {
+			if !c.canRetry(attemptReq, resp, nil) || attempt == attempts {
 				return resp, nil
 			}
 
@@ -311,7 +323,7 @@ func (c *HTTPClient) execute(ctx context.Context, req *http.Request) (*http.Resp
 				"error", err,
 			)
 
-			if !shouldRetryError(err) || !canRetry || attempt == attempts {
+			if !c.canRetry(attemptReq, nil, err) || attempt == attempts {
 				return nil, err
 			}
 		}
@@ -349,18 +361,53 @@ func isMutatingMethod(method string) bool {
 	}
 }
 
-// isRetryableMethod reports whether req may be safely retried.
-// Mutating methods (POST, PUT, PATCH, DELETE) are only retried when an Idempotency-Key
-// header is present, guaranteeing upstream deduplication.
-func isRetryableMethod(req *http.Request) bool {
-	return isRetryableMethodWithKey(req.Method, req.Header.Get(headerIdempotencyKey))
+// canRetry evaluates whether an HTTP request attempt warrants a retry.
+// Safe idempotent methods (GET, HEAD, OPTIONS) are eligible for retries on transient errors and 5xx.
+// Mutating methods (POST, PUT, PATCH, DELETE) are only retried when AllowMutatingRetries is explicitly
+// enabled on the client AND an Idempotency-Key header is present.
+func (c *HTTPClient) canRetry(req *http.Request, resp *http.Response, err error) bool {
+	if req == nil {
+		return false
+	}
+	if !c.isRetryableMethod(req.Method, req.Header.Get(headerIdempotencyKey)) {
+		return false
+	}
+	if err != nil {
+		return shouldRetryError(err)
+	}
+	if resp != nil {
+		return resp.StatusCode == http.StatusTooManyRequests || shouldRetryResponse(resp)
+	}
+	return false
 }
 
-func isRetryableMethodWithKey(method, idempotencyKey string) bool {
+// canRetry evaluates whether req warrants a retry using default client safety settings (no mutating retries).
+func canRetry(req *http.Request, resp *http.Response, err error) bool {
+	var c *HTTPClient
+	return c.canRetry(req, resp, err)
+}
+
+// isRetryableMethod reports whether the HTTP method may be safely retried.
+// Safe idempotent methods (GET, HEAD, OPTIONS) are retryable.
+// Mutating methods (POST, PUT, PATCH, DELETE) are only retried when AllowMutatingRetries
+// is explicitly enabled on the client and an Idempotency-Key header is present.
+func (c *HTTPClient) isRetryableMethod(method, idempotencyKey string) bool {
 	if isMutatingMethod(method) {
-		return idempotencyKey != ""
+		allow := false
+		if c != nil {
+			allow = c.allowMutatingRetries
+		}
+		return allow && idempotencyKey != ""
 	}
 	return true
+}
+
+func isRetryableMethod(req *http.Request) bool {
+	if req == nil {
+		return false
+	}
+	var c *HTTPClient
+	return c.isRetryableMethod(req.Method, req.Header.Get(headerIdempotencyKey))
 }
 
 func shouldRetryResponse(resp *http.Response) bool {

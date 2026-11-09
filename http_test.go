@@ -40,12 +40,15 @@ func TestHTTPClientRetriesAndReplaysRequestBody(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHTTPClient(HTTPClientConfig{RetryBaseDelay: time.Nanosecond})
+	client := NewHTTPClient(HTTPClientConfig{
+		AllowMutatingRetries: true,
+		RetryBaseDelay:       time.Nanosecond,
+	})
 	req, err := http.NewRequest(http.MethodPost, server.URL, strings.NewReader("amount=100"))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	// POST is non-idempotent; the Idempotency-Key header opts in to retry.
+	// POST is non-idempotent; AllowMutatingRetries: true and Idempotency-Key opt in to retry.
 	req.Header.Set("Idempotency-Key", "test-idem-key-001")
 
 	resp, err := client.Do(context.Background(), req)
@@ -227,14 +230,17 @@ func TestHTTPClientGetBodyRequiredForRetry(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHTTPClient(HTTPClientConfig{RetryBaseDelay: time.Nanosecond})
+	client := NewHTTPClient(HTTPClientConfig{
+		AllowMutatingRetries: true,
+		RetryBaseDelay:       time.Nanosecond,
+	})
 
 	// io.NopCloser wraps an arbitrary reader; net/http does NOT set GetBody for it.
 	req, err := http.NewRequest(http.MethodPost, server.URL, io.NopCloser(strings.NewReader("data")))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	req.Header.Set("Idempotency-Key", "idem-001") // opts POST in to retry path
+	req.Header.Set("Idempotency-Key", "idem-001") // opts POST in to retry path when AllowMutatingRetries is true
 
 	_, err = client.Do(context.Background(), req)
 	if err == nil {
@@ -366,7 +372,10 @@ func TestHTTPClientNoBodyRetries(t *testing.T) {
 				t.Fatal(err)
 			}
 			req.Header.Set("Idempotency-Key", "empty-body")
-			client := NewHTTPClient(HTTPClientConfig{RetryBaseDelay: time.Nanosecond})
+			client := NewHTTPClient(HTTPClientConfig{
+				AllowMutatingRetries: true,
+				RetryBaseDelay:       time.Nanosecond,
+			})
 			resp, err := client.Do(context.Background(), req)
 			if err != nil {
 				t.Fatal(err)
@@ -427,7 +436,11 @@ func TestHTTPClientInitialBodyLifecycle(t *testing.T) {
 				}
 				return io.NopCloser(strings.NewReader("payload")), nil
 			}
-			client := NewHTTPClient(HTTPClientConfig{MaxAttempts: tc.maxAttempts, RetryBaseDelay: time.Nanosecond})
+			client := NewHTTPClient(HTTPClientConfig{
+				MaxAttempts:          tc.maxAttempts,
+				RetryBaseDelay:       time.Nanosecond,
+				AllowMutatingRetries: tc.retry,
+			})
 			resp, err := client.Do(context.Background(), req)
 			if err != nil {
 				t.Fatal(err)
@@ -492,4 +505,147 @@ func TestHTTPClientConcurrentDumpWriter(t *testing.T) {
 			t.Errorf("dump contains %d copies of %q, want %d", got, marker, requests)
 		}
 	}
+}
+
+func TestHTTPClient_MutatingRequest_DefaultNoRetryOn5xx(t *testing.T) {
+	mutatingMethods := []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete}
+	statusCodes := []int{
+		http.StatusInternalServerError,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout,
+	}
+
+	for _, method := range mutatingMethods {
+		for _, status := range statusCodes {
+			name := fmt.Sprintf("%s_%d", method, status)
+			t.Run(name, func(t *testing.T) {
+				var attempts atomic.Int32
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					attempts.Add(1)
+					w.WriteHeader(status)
+				}))
+				defer server.Close()
+
+				// Default HTTPClientConfig has AllowMutatingRetries = false
+				client := NewHTTPClient(HTTPClientConfig{
+					MaxAttempts:    3,
+					RetryBaseDelay: time.Nanosecond,
+				})
+				req, err := http.NewRequest(method, server.URL, strings.NewReader("payload"))
+				if err != nil {
+					t.Fatalf("new request: %v", err)
+				}
+				req.Header.Set("Idempotency-Key", "test-idem-key")
+
+				resp, err := client.Do(context.Background(), req)
+				if err != nil {
+					t.Fatalf("unexpected client.Do error: %v", err)
+				}
+				defer func() { _ = resp.Body.Close() }()
+
+				if resp.StatusCode != status {
+					t.Fatalf("expected status %d, got %d", status, resp.StatusCode)
+				}
+				if got := attempts.Load(); got != 1 {
+					t.Fatalf("expected exactly 1 attempt without AllowMutatingRetries, got %d", got)
+				}
+			})
+		}
+	}
+}
+
+func TestHTTPClient_MutatingRequest_OptInRetriesOn5xx(t *testing.T) {
+	mutatingMethods := []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete}
+	statusCodes := []int{
+		http.StatusInternalServerError,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout,
+	}
+
+	for _, method := range mutatingMethods {
+		for _, status := range statusCodes {
+			name := fmt.Sprintf("%s_%d", method, status)
+			t.Run(name, func(t *testing.T) {
+				var attempts atomic.Int32
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					count := attempts.Add(1)
+					if count < 3 {
+						w.WriteHeader(status)
+						return
+					}
+					w.WriteHeader(http.StatusOK)
+					_, _ = w.Write([]byte("ok"))
+				}))
+				defer server.Close()
+
+				client := NewHTTPClient(HTTPClientConfig{
+					AllowMutatingRetries: true,
+					MaxAttempts:          3,
+					RetryBaseDelay:       time.Nanosecond,
+				})
+				req, err := http.NewRequest(method, server.URL, strings.NewReader("payload"))
+				if err != nil {
+					t.Fatalf("new request: %v", err)
+				}
+				req.Header.Set("Idempotency-Key", "test-idem-key")
+
+				resp, err := client.Do(context.Background(), req)
+				if err != nil {
+					t.Fatalf("unexpected client.Do error: %v", err)
+				}
+				defer func() { _ = resp.Body.Close() }()
+
+				if resp.StatusCode != http.StatusOK {
+					t.Fatalf("expected status 200, got %d", resp.StatusCode)
+				}
+				if got := attempts.Load(); got != 3 {
+					t.Fatalf("expected 3 attempts with AllowMutatingRetries: true, got %d", got)
+				}
+			})
+		}
+	}
+}
+
+func TestHTTPClient_MutatingRequest_DefaultNoRetryOnNetworkError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	// Close server immediately so connection fails
+	server.Close()
+
+	var attempts atomic.Int32
+	tr := &countingRoundTripper{
+		attempts: &attempts,
+		base:     http.DefaultTransport,
+	}
+
+	client := NewHTTPClient(HTTPClientConfig{
+		MaxAttempts:    3,
+		RetryBaseDelay: time.Nanosecond,
+	})
+	client.SetTransport(tr)
+
+	req, err := http.NewRequest(http.MethodPost, server.URL, strings.NewReader("payload"))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Idempotency-Key", "test-idem-key")
+
+	_, err = client.Do(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected network error, got nil")
+	}
+	if got := attempts.Load(); got != 1 {
+		t.Fatalf("expected exactly 1 attempt on network error without AllowMutatingRetries, got %d", got)
+	}
+}
+
+type countingRoundTripper struct {
+	attempts *atomic.Int32
+	base     http.RoundTripper
+}
+
+func (c *countingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	c.attempts.Add(1)
+	return c.base.RoundTrip(req)
 }
