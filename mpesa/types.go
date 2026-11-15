@@ -1,5 +1,10 @@
 package mpesa
 
+import (
+	"encoding/json"
+	"errors"
+)
+
 // STKPushRequest encapsulates parameters required to initiate an STK Push (Lipa Na M-Pesa Online) customer charge.
 type STKPushRequest struct {
 	IdempotencyKey    string `json:"-"`
@@ -53,14 +58,79 @@ type C2BRegisterRequest struct {
 	ValidationURL   string `json:"ValidationURL"`
 }
 
-// CB2SimulateRequest encapsulates parameters to simulate a C2B transaction in sandbox environments.
-type CB2SimulateRequest struct {
+// C2BRegisterResponse represents the response returned by the Daraja C2B URL registration endpoint.
+type C2BRegisterResponse struct {
+	OriginatorConversationID string `json:"OriginatorConversationID"`
+	ConversationID           string `json:"ConversationID"`
+	ResponseCode             string `json:"ResponseCode,omitempty"`
+	ResponseDescription      string `json:"ResponseDescription"`
+}
+
+// UnmarshalJSON unmarshals C2BRegisterResponse from JSON, supporting both Daraja's
+// known typo "OriginatorCoversationID" and the standard "OriginatorConversationID".
+func (r *C2BRegisterResponse) UnmarshalJSON(data []byte) error {
+	if r == nil {
+		return errors.New("mpesa: UnmarshalJSON on nil *C2BRegisterResponse")
+	}
+	type Alias C2BRegisterResponse
+	aux := struct {
+		OriginatorCoversationID string `json:"OriginatorCoversationID"`
+		*Alias
+	}{
+		Alias: (*Alias)(r),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if r.OriginatorConversationID == "" && aux.OriginatorCoversationID != "" {
+		r.OriginatorConversationID = aux.OriginatorCoversationID
+	}
+	return nil
+}
+
+// C2BSimulateRequest encapsulates parameters to simulate a C2B transaction in sandbox environments.
+type C2BSimulateRequest struct {
 	IdempotencyKey string `json:"-"`
 	ShortCode      string `json:"ShortCode"`
 	CommandID      string `json:"CommandID"`
 	Amount         int    `json:"Amount"`
 	Msisdn         string `json:"Msisdn"`
 	BillRefNumber  string `json:"BillRefNumber"`
+}
+
+// CB2SimulateRequest is a backward-compatible alias for C2BSimulateRequest.
+//
+// Deprecated: CB2SimulateRequest is a deprecated alias for C2BSimulateRequest. Use C2BSimulateRequest instead.
+type CB2SimulateRequest = C2BSimulateRequest
+
+// C2BSimulateResponse represents the response returned by the Daraja C2B sandbox simulation endpoint.
+type C2BSimulateResponse struct {
+	OriginatorConversationID string `json:"OriginatorConversationID"`
+	ConversationID           string `json:"ConversationID"`
+	ResponseCode             string `json:"ResponseCode,omitempty"`
+	ResponseDescription      string `json:"ResponseDescription"`
+}
+
+// UnmarshalJSON unmarshals C2BSimulateResponse from JSON, supporting both Daraja's
+// known typo "OriginatorCoversationID" and the standard "OriginatorConversationID".
+func (r *C2BSimulateResponse) UnmarshalJSON(data []byte) error {
+	if r == nil {
+		return errors.New("mpesa: UnmarshalJSON on nil *C2BSimulateResponse")
+	}
+	type Alias C2BSimulateResponse
+	aux := struct {
+		OriginatorCoversationID string `json:"OriginatorCoversationID"`
+		*Alias
+	}{
+		Alias: (*Alias)(r),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if r.OriginatorConversationID == "" && aux.OriginatorCoversationID != "" {
+		r.OriginatorConversationID = aux.OriginatorCoversationID
+	}
+	return nil
 }
 
 // B2CRequest encapsulates parameters required to initiate a Business-to-Customer (B2C) payout.
