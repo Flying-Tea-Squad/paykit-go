@@ -2,13 +2,22 @@ package mpesa
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Flying-Tea-Squad/paykit-go"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNew_Validations(t *testing.T) {
@@ -562,4 +571,209 @@ func TestGateway_Disburse_Validations(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "initiator name is required") {
 		t.Errorf("expected missing initiator error, got %v", err)
 	}
+}
+
+// --- Auto-generated SecurityCredential tests ---
+
+func TestNew_AutoGenerateSecurityCredential(t *testing.T) {
+	privateKey, certPEM := generateTestCertificateForGateway(t)
+	password := "TestInitiatorPassword123"
+
+	cfg := Config{
+		ConsumerKey:       "key",
+		ConsumerSecret:    "sec",
+		Passkey:           "pass",
+		BusinessShortCode: "174379",
+		InitiatorPassword: password,
+		CertificatePEM:    certPEM,
+	}
+
+	gw, err := New(cfg)
+	require.NoError(t, err)
+	require.NotEmpty(t, gw.cfg.SecurityCredential, "SecurityCredential should be auto-generated")
+
+	// Verify the generated credential can be decrypted back to the password
+	ciphertext, err := base64.StdEncoding.DecodeString(gw.cfg.SecurityCredential)
+	require.NoError(t, err)
+	decrypted, err := rsa.DecryptPKCS1v15(rand.Reader, privateKey, ciphertext)
+	require.NoError(t, err)
+	require.Equal(t, password, string(decrypted))
+}
+
+func TestNew_NoAutoGenerate_WhenSecurityCredentialProvided(t *testing.T) {
+	_, certPEM := generateTestCertificateForGateway(t)
+	password := "TestInitiatorPassword123"
+	explicitCred := "explicitly-provided-credential"
+
+	cfg := Config{
+		ConsumerKey:       "key",
+		ConsumerSecret:    "sec",
+		Passkey:           "pass",
+		BusinessShortCode: "174379",
+		SecurityCredential: explicitCred,
+		InitiatorPassword:  password,
+		CertificatePEM:     certPEM,
+	}
+
+	gw, err := New(cfg)
+	require.NoError(t, err)
+	require.Equal(t, explicitCred, gw.cfg.SecurityCredential, "explicit SecurityCredential should take precedence")
+}
+
+func TestNew_Error_WhenOnlyPasswordProvided(t *testing.T) {
+	cfg := Config{
+		ConsumerKey:       "key",
+		ConsumerSecret:    "sec",
+		Passkey:           "pass",
+		BusinessShortCode: "174379",
+		InitiatorPassword: "password",
+		// CertificatePEM omitted
+	}
+
+	_, err := New(cfg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "both InitiatorPassword and CertificatePEM are required")
+}
+
+func TestNew_Error_WhenOnlyCertProvided(t *testing.T) {
+	_, certPEM := generateTestCertificateForGateway(t)
+
+	cfg := Config{
+		ConsumerKey:       "key",
+		ConsumerSecret:    "sec",
+		Passkey:           "pass",
+		BusinessShortCode: "174379",
+		CertificatePEM:    certPEM,
+		// InitiatorPassword omitted
+	}
+
+	_, err := New(cfg)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "both InitiatorPassword and CertificatePEM are required")
+}
+
+func TestNew_AutoGenerateErrorPropagates(t *testing.T) {
+	// Invalid PEM (not a valid certificate)
+	certPEM := []byte(`-----BEGIN CERTIFICATE-----
+invalid
+-----END CERTIFICATE-----`)
+
+	cfg := Config{
+		ConsumerKey:       "key",
+		ConsumerSecret:    "sec",
+		Passkey:           "pass",
+		BusinessShortCode: "174379",
+		InitiatorPassword: "password",
+		CertificatePEM:    certPEM,
+	}
+
+	_, err := New(cfg)
+	require.Error(t, err)
+	// Should wrap the sentinel error
+	require.ErrorContains(t, err, "failed to generate security credential")
+}
+
+func TestNew_ConfigNotMutated(t *testing.T) {
+	_, certPEM := generateTestCertificateForGateway(t)
+	password := "TestInitiatorPassword123"
+
+	originalCfg := Config{
+		ConsumerKey:       "key",
+		ConsumerSecret:    "sec",
+		Passkey:           "pass",
+		BusinessShortCode: "174379",
+		InitiatorPassword: password,
+		CertificatePEM:    certPEM,
+		SecurityCredential: "",
+	}
+
+	// Make a copy for comparison
+	cfgCopy := originalCfg
+
+	_, err := New(originalCfg)
+	require.NoError(t, err)
+
+	// Original config should be unchanged (passed by value)
+	require.Equal(t, cfgCopy.SecurityCredential, originalCfg.SecurityCredential)
+	require.Equal(t, cfgCopy.InitiatorPassword, originalCfg.InitiatorPassword)
+	require.Equal(t, cfgCopy.CertificatePEM, originalCfg.CertificatePEM)
+}
+
+func TestNew_STKPushOnly_NoCredentialNeeded(t *testing.T) {
+	// Config without any credential fields should succeed (STK Push only)
+	cfg := Config{
+		ConsumerKey:       "key",
+		ConsumerSecret:    "sec",
+		Passkey:           "pass",
+		BusinessShortCode: "174379",
+	}
+
+	gw, err := New(cfg)
+	require.NoError(t, err)
+	require.Empty(t, gw.cfg.SecurityCredential)
+	require.Empty(t, gw.cfg.InitiatorPassword)
+	require.Nil(t, gw.cfg.CertificatePEM)
+}
+
+func TestNew_SecurityCredentialPrecedence_ExplicitOverAuto(t *testing.T) {
+	_, certPEM := generateTestCertificateForGateway(t)
+	password := "TestInitiatorPassword123"
+	explicitCred := "explicit-credential"
+
+	cfg := Config{
+		ConsumerKey:       "key",
+		ConsumerSecret:    "sec",
+		Passkey:           "pass",
+		BusinessShortCode: "174379",
+		SecurityCredential: explicitCred,
+		InitiatorPassword:  password,
+		CertificatePEM:     certPEM,
+	}
+
+	gw, err := New(cfg)
+	require.NoError(t, err)
+	require.Equal(t, explicitCred, gw.cfg.SecurityCredential)
+}
+
+func TestNew_SecurityCredentialPrecedence_ExplicitWithMalformedCert(t *testing.T) {
+	// Malformed cert should be ignored when explicit SecurityCredential provided
+	malformedCert := []byte(`-----BEGIN CERTIFICATE-----
+not a valid cert
+-----END CERTIFICATE-----`)
+
+	explicitCred := "explicit-credential"
+
+	cfg := Config{
+		ConsumerKey:       "key",
+		ConsumerSecret:    "sec",
+		Passkey:           "pass",
+		BusinessShortCode: "174379",
+		SecurityCredential: explicitCred,
+		InitiatorPassword:  "password",
+		CertificatePEM:     malformedCert,
+	}
+
+	gw, err := New(cfg)
+	require.NoError(t, err, "malformed cert should be ignored when SecurityCredential is explicit")
+	require.Equal(t, explicitCred, gw.cfg.SecurityCredential)
+}
+
+// Test helper for gateway tests
+func generateTestCertificateForGateway(t *testing.T) (*rsa.PrivateKey, []byte) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	certTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "Test CA"},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, certTemplate, certTemplate, &privateKey.PublicKey, privateKey)
+	require.NoError(t, err)
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	return privateKey, certPEM
 }
