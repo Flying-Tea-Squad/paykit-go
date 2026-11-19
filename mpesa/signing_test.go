@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
@@ -331,6 +332,23 @@ func TestGenerateSecurityCredential_NoTrailingNewline(t *testing.T) {
 	credWithoutNL, _ := GenerateSecurityCredential(passwordWithoutNewline, certPEM)
 
 	require.NotEqual(t, credWithNL, credWithoutNL, "trailing newline should produce different credential")
+}
+
+func TestGenerateSecurityCredential_PayloadTooLong(t *testing.T) {
+	// RSA PKCS#1 v1.5 has a hard payload limit of modulusBytes - 11.
+	// For a 2048-bit key (256 bytes modulus), max payload = 256 - 11 = 245 bytes.
+	// A 250-byte password should exceed this limit and return rsa.ErrMessageTooLong.
+	_, certPEM := generateTestCertificate(t)
+
+	// 250 bytes - exceeds 245-byte limit for 2048-bit key
+	longPassword := strings.Repeat("a", 250)
+
+	_, err := GenerateSecurityCredential(longPassword, certPEM)
+	require.Error(t, err)
+
+	// Should wrap rsa.ErrMessageTooLong cleanly, not panic
+	require.ErrorContains(t, err, "message too long")
+	require.ErrorIs(t, err, rsa.ErrMessageTooLong, "should wrap rsa.ErrMessageTooLong")
 }
 
 // Test helpers

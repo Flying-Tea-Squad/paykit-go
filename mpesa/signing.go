@@ -147,7 +147,7 @@ func GenerateSecurityCredential(initiatorPassword string, certPEM []byte) (strin
 	//nolint:staticcheck // Required by Safaricom Daraja API specification (PKCS#1 v1.5 encryption)
 	ciphertext, err := rsa.EncryptPKCS1v15(rand.Reader, rsaPub, []byte(initiatorPassword))
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrEncryptionFailed, err)
+		return "", fmt.Errorf("%w: %w", ErrEncryptionFailed, err)
 	}
 
 	// 6. Return Base64-encoded result (single line, no newlines)
