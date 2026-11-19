@@ -75,7 +75,8 @@ func TestGenerateTimestamp(t *testing.T) {
 		t.Fatalf("expected timestamp to have 14 characters, got %d (%q)", len(ts), ts)
 	}
 
-	parsed, err := time.ParseInLocation("20060102150405", ts, time.Local)
+	// Parse using EAT timezone since generateTimestamp uses EAT (UTC+3)
+	parsed, err := time.ParseInLocation("20060102150405", ts, eatZone)
 	if err != nil {
 		t.Fatalf("failed to parse timestamp %q with layout 20060102150405: %v", ts, err)
 	}
