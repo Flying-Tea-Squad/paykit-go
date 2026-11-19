@@ -1,9 +1,19 @@
 package mpesa
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
+	"encoding/pem"
+	"math/big"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestGeneratePassword(t *testing.T) {
@@ -122,4 +132,235 @@ func TestGenerateTimestamp_EAT(t *testing.T) {
 	if diffUTC <= 2*time.Hour {
 		t.Error("timestamp should be in EAT, not UTC")
 	}
+}
+
+// --- GenerateSecurityCredential tests ---
+
+func TestGenerateSecurityCredential_X509Cert(t *testing.T) {
+	privateKey, certPEM := generateTestCertificate(t)
+	password := "TestInitiatorPassword123"
+
+	credential, err := GenerateSecurityCredential(password, certPEM)
+	require.NoError(t, err)
+	require.NotEmpty(t, credential)
+
+	// Verify round-trip decryption
+	ciphertext, err := base64.StdEncoding.DecodeString(credential)
+	require.NoError(t, err)
+	decrypted, err := rsa.DecryptPKCS1v15(rand.Reader, privateKey, ciphertext)
+	require.NoError(t, err)
+	require.Equal(t, password, string(decrypted))
+}
+
+func TestGenerateSecurityCredential_PKIXKey(t *testing.T) {
+	privateKey, pubPEM := generateTestPKIXKey(t)
+	password := "TestInitiatorPassword123"
+
+	credential, err := GenerateSecurityCredential(password, pubPEM)
+	require.NoError(t, err)
+	require.NotEmpty(t, credential)
+
+	// Verify round-trip decryption
+	ciphertext, err := base64.StdEncoding.DecodeString(credential)
+	require.NoError(t, err)
+	decrypted, err := rsa.DecryptPKCS1v15(rand.Reader, privateKey, ciphertext)
+	require.NoError(t, err)
+	require.Equal(t, password, string(decrypted))
+}
+
+func TestGenerateSecurityCredential_EmptyPassword(t *testing.T) {
+	_, certPEM := generateTestCertificate(t)
+	_, err := GenerateSecurityCredential("", certPEM)
+	require.ErrorIs(t, err, ErrEmptyInitiatorPassword)
+}
+
+func TestGenerateSecurityCredential_EmptyCert(t *testing.T) {
+	_, err := GenerateSecurityCredential("password", nil)
+	require.ErrorIs(t, err, ErrEmptyCertificate)
+}
+
+func TestGenerateSecurityCredential_InvalidPEM(t *testing.T) {
+	_, err := GenerateSecurityCredential("password", []byte("not a pem"))
+	require.ErrorIs(t, err, ErrInvalidCertificatePEM)
+}
+
+func TestGenerateSecurityCredential_EncryptedPEM(t *testing.T) {
+	// Create a PEM with Proc-Type header (encrypted)
+	encryptedPEM := []byte(`-----BEGIN CERTIFICATE-----
+Proc-Type: 4,ENCRYPTED
+DEK-Info: DES-EDE3-CBC,1234567890ABCDEF
+
+abcdefghijklmnop
+-----END CERTIFICATE-----`)
+
+	_, err := GenerateSecurityCredential("password", encryptedPEM)
+	require.ErrorIs(t, err, ErrInvalidCertificatePEM)
+}
+
+func TestGenerateSecurityCredential_NonRSAKey(t *testing.T) {
+	// Generate ECDSA key and create CERTIFICATE PEM
+	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	certTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "Test ECDSA"},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, certTemplate, certTemplate, &privateKey.PublicKey, privateKey)
+	require.NoError(t, err)
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+
+	_, err = GenerateSecurityCredential("password", certPEM)
+	require.ErrorIs(t, err, ErrNonRSAKey)
+}
+
+func TestGenerateSecurityCredential_SmallRSAKey(t *testing.T) {
+	// 1024-bit key (below minimum)
+	privateKey, err := rsa.GenerateKey(rand.Reader, 1024)
+	require.NoError(t, err)
+
+	pubKeyBytes, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	require.NoError(t, err)
+
+	pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubKeyBytes})
+
+	_, err = GenerateSecurityCredential("password", pubPEM)
+	require.ErrorIs(t, err, ErrNonRSAKey)
+}
+
+func TestGenerateSecurityCredential_SmallExponent(t *testing.T) {
+	// Create a key with E=1 (invalid)
+	// Use a valid modulus but E=1
+	n := new(big.Int).SetUint64(1234567890123456789)
+	privateKey := &rsa.PrivateKey{
+		PublicKey: rsa.PublicKey{
+			N: n,
+			E: 1, // Invalid exponent
+		},
+	}
+
+	pubKeyBytes, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	require.NoError(t, err)
+
+	pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubKeyBytes})
+
+	_, err = GenerateSecurityCredential("password", pubPEM)
+	require.ErrorIs(t, err, ErrNonRSAKey)
+}
+
+func TestGenerateSecurityCredential_PKCS1PublicKey(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	// PKCS#1 format (not PKIX)
+	pubKeyBytes := x509.MarshalPKCS1PublicKey(&privateKey.PublicKey)
+	pubPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PUBLIC KEY", Bytes: pubKeyBytes})
+
+	_, err = GenerateSecurityCredential("password", pubPEM)
+	require.ErrorIs(t, err, ErrInvalidCertificatePEM)
+	require.Contains(t, err.Error(), "PKCS#1 RSA PUBLIC KEY format not supported")
+}
+
+func TestGenerateSecurityCredential_PrivateKey(t *testing.T) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	// PKCS#8 private key
+	privKeyBytes, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	require.NoError(t, err)
+
+	privPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privKeyBytes})
+
+	_, err = GenerateSecurityCredential("password", privPEM)
+	require.ErrorIs(t, err, ErrInvalidCertificatePEM)
+	require.Contains(t, err.Error(), "private keys are not accepted")
+}
+
+func TestGenerateSecurityCredential_TrailingPEMBlock(t *testing.T) {
+	_, certPEM := generateTestCertificate(t)
+	_, pubPEM := generateTestPKIXKey(t)
+
+	// Concatenate two PEM blocks
+	combined := append(certPEM, pubPEM...)
+
+	_, err := GenerateSecurityCredential("password", combined)
+	require.ErrorIs(t, err, ErrInvalidCertificatePEM)
+}
+
+func TestGenerateSecurityCredential_TrailingGarbage(t *testing.T) {
+	_, certPEM := generateTestCertificate(t)
+	garbage := append(certPEM, []byte("trailing garbage")...)
+
+	_, err := GenerateSecurityCredential("password", garbage)
+	require.ErrorIs(t, err, ErrInvalidCertificatePEM)
+}
+
+func TestGenerateSecurityCredential_DeterministicRandomness(t *testing.T) {
+	privateKey, certPEM := generateTestCertificate(t)
+	password := "TestInitiatorPassword123"
+
+	cred1, err := GenerateSecurityCredential(password, certPEM)
+	require.NoError(t, err)
+
+	cred2, err := GenerateSecurityCredential(password, certPEM)
+	require.NoError(t, err)
+
+	// PKCS#1 v1.5 encryption is randomized - same input should produce different ciphertexts
+	require.NotEqual(t, cred1, cred2, "PKCS#1 v1.5 encryption should produce different ciphertexts each call")
+
+	// But both should decrypt correctly
+	ct1, _ := base64.StdEncoding.DecodeString(cred1)
+	ct2, _ := base64.StdEncoding.DecodeString(cred2)
+	dec1, _ := rsa.DecryptPKCS1v15(rand.Reader, privateKey, ct1)
+	dec2, _ := rsa.DecryptPKCS1v15(rand.Reader, privateKey, ct2)
+	require.Equal(t, password, string(dec1))
+	require.Equal(t, password, string(dec2))
+}
+
+func TestGenerateSecurityCredential_NoTrailingNewline(t *testing.T) {
+	_, certPEM := generateTestCertificate(t)
+
+	passwordWithNewline := "password\n"
+	passwordWithoutNewline := "password"
+
+	credWithNL, _ := GenerateSecurityCredential(passwordWithNewline, certPEM)
+	credWithoutNL, _ := GenerateSecurityCredential(passwordWithoutNewline, certPEM)
+
+	require.NotEqual(t, credWithNL, credWithoutNL, "trailing newline should produce different credential")
+}
+
+// Test helpers
+
+func generateTestCertificate(t *testing.T) (*rsa.PrivateKey, []byte) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	certTemplate := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "Test CA"},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, certTemplate, certTemplate, &privateKey.PublicKey, privateKey)
+	require.NoError(t, err)
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	return privateKey, certPEM
+}
+
+func generateTestPKIXKey(t *testing.T) (*rsa.PrivateKey, []byte) {
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	pubKeyBytes, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+	require.NoError(t, err)
+
+	pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubKeyBytes})
+	return privateKey, pubPEM
 }
