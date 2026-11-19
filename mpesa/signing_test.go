@@ -73,3 +73,53 @@ func TestGenerateTimestamp(t *testing.T) {
 		t.Errorf("timestamp %v outside expected range [%v, %v]", parsed, before, after)
 	}
 }
+
+func TestFormatTimestamp_EAT(t *testing.T) {
+	// Fixed UTC time: 2026-01-15 12:00:00 UTC
+	fixedUTC := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
+	// Expected in EAT (UTC+3): 2026-01-15 15:00:00
+	expected := "20260115150000"
+
+	got := formatTimestamp(fixedUTC)
+	if got != expected {
+		t.Errorf("formatTimestamp(%v) = %q; want %q", fixedUTC, got, expected)
+	}
+
+	// Verify it's NOT in UTC (would be 20260115120000)
+	gotUTC := fixedUTC.Format("20060102150405")
+	if gotUTC == got {
+		t.Error("output should be in EAT, not UTC")
+	}
+}
+
+func TestGenerateTimestamp_EAT(t *testing.T) {
+	// Integration test: verify generateTimestamp() uses formatTimestamp internally
+	ts := generateTimestamp()
+
+	// Parse as EAT
+	eatLoc := time.FixedZone("EAT", 3*60*60)
+	parsed, err := time.ParseInLocation("20060102150405", ts, eatLoc)
+	if err != nil {
+		t.Fatalf("failed to parse timestamp %q: %v", ts, err)
+	}
+
+	// Verify it's reasonable (within a few seconds of now in EAT)
+	nowEAT := time.Now().In(eatLoc)
+	diff := parsed.Sub(nowEAT)
+	if diff < 0 {
+		diff = -diff
+	}
+	if diff > 5*time.Second {
+		t.Errorf("timestamp %v outside expected range (diff=%v)", parsed, diff)
+	}
+
+	// Verify it's NOT in UTC (would be 3 hours behind)
+	parsedUTC, _ := time.Parse("20060102150405", ts)
+	diffUTC := parsedUTC.Sub(nowEAT)
+	if diffUTC < 0 {
+		diffUTC = -diffUTC
+	}
+	if diffUTC <= 2*time.Hour {
+		t.Error("timestamp should be in EAT, not UTC")
+	}
+}
