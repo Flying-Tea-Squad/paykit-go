@@ -53,6 +53,15 @@ type Config struct {
 	// SecurityCredential is the encrypted operator password for B2C and Reversal operations.
 	SecurityCredential string
 
+	// InitiatorPassword is the plaintext initiator password for B2C/Reversal/Balance/Status.
+	// If provided along with CertificatePEM, SecurityCredential will be auto-generated.
+	InitiatorPassword string
+
+	// CertificatePEM is Safaricom's public certificate in PEM format (CERTIFICATE or PUBLIC KEY block).
+	// If provided along with InitiatorPassword, SecurityCredential will be auto-generated.
+	// Must be a byte slice (e.g., from os.ReadFile or []byte(os.Getenv("CERT"))).
+	CertificatePEM []byte
+
 	// QueueTimeOutURL is the callback URL for timeouts during B2C or Reversal requests.
 	QueueTimeOutURL string
 
@@ -96,6 +105,28 @@ func New(cfg Config) (*Gateway, error) {
 	}
 	if strings.TrimSpace(cfg.BusinessShortCode) == "" {
 		return nil, errors.New("mpesa: business short code is required")
+	}
+
+	// Auto-generate SecurityCredential ONLY if not already provided
+	if strings.TrimSpace(cfg.SecurityCredential) == "" {
+		hasPassword := strings.TrimSpace(cfg.InitiatorPassword) != ""
+		hasCert := len(cfg.CertificatePEM) > 0
+
+		if hasPassword && hasCert {
+			cred, err := GenerateSecurityCredential(cfg.InitiatorPassword, cfg.CertificatePEM)
+			if err != nil {
+				// Wrap with %w to preserve sentinel errors (ErrEmptyInitiatorPassword, ErrInvalidCertificatePEM, etc.)
+				return nil, fmt.Errorf("mpesa: failed to generate security credential: %w", err)
+			}
+			cfg.SecurityCredential = cred
+		} else if hasPassword != hasCert {
+			// One provided without the other — explicit error, don't silently ignore
+			return nil, errors.New("mpesa: both InitiatorPassword and CertificatePEM are required to auto-generate SecurityCredential")
+		}
+		// If neither provided, SecurityCredential remains empty (valid for STK Push only)
+	} else {
+		// SecurityCredential explicitly provided — DO NOT validate InitiatorPassword or CertificatePEM
+		// They are ignored. This allows callers to use pre-computed credentials without loading certs.
 	}
 
 	if cfg.BaseURL == "" {
