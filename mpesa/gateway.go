@@ -124,10 +124,9 @@ func New(cfg Config) (*Gateway, error) {
 			return nil, errors.New("mpesa: both InitiatorPassword and CertificatePEM are required to auto-generate SecurityCredential")
 		}
 		// If neither provided, SecurityCredential remains empty (valid for STK Push only)
-	} else {
-		// SecurityCredential explicitly provided — DO NOT validate InitiatorPassword or CertificatePEM
-		// They are ignored. This allows callers to use pre-computed credentials without loading certs.
 	}
+	// If SecurityCredential explicitly provided, DO NOT validate InitiatorPassword or CertificatePEM
+	// They are ignored. This allows callers to use pre-computed credentials without loading certs.
 
 	if cfg.BaseURL == "" {
 		if cfg.Environment == EnvironmentProduction {
