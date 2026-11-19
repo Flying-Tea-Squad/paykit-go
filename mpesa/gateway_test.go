@@ -606,10 +606,10 @@ func TestNew_NoAutoGenerate_WhenSecurityCredentialProvided(t *testing.T) {
 	explicitCred := "explicitly-provided-credential"
 
 	cfg := Config{
-		ConsumerKey:       "key",
-		ConsumerSecret:    "sec",
-		Passkey:           "pass",
-		BusinessShortCode: "174379",
+		ConsumerKey:        "key",
+		ConsumerSecret:     "sec",
+		Passkey:            "pass",
+		BusinessShortCode:  "174379",
 		SecurityCredential: explicitCred,
 		InitiatorPassword:  password,
 		CertificatePEM:     certPEM,
@@ -678,12 +678,12 @@ func TestNew_ConfigNotMutated(t *testing.T) {
 	password := "TestInitiatorPassword123"
 
 	originalCfg := Config{
-		ConsumerKey:       "key",
-		ConsumerSecret:    "sec",
-		Passkey:           "pass",
-		BusinessShortCode: "174379",
-		InitiatorPassword: password,
-		CertificatePEM:    certPEM,
+		ConsumerKey:        "key",
+		ConsumerSecret:     "sec",
+		Passkey:            "pass",
+		BusinessShortCode:  "174379",
+		InitiatorPassword:  password,
+		CertificatePEM:     certPEM,
 		SecurityCredential: "",
 	}
 
@@ -721,10 +721,10 @@ func TestNew_SecurityCredentialPrecedence_ExplicitOverAuto(t *testing.T) {
 	explicitCred := "explicit-credential"
 
 	cfg := Config{
-		ConsumerKey:       "key",
-		ConsumerSecret:    "sec",
-		Passkey:           "pass",
-		BusinessShortCode: "174379",
+		ConsumerKey:        "key",
+		ConsumerSecret:     "sec",
+		Passkey:            "pass",
+		BusinessShortCode:  "174379",
 		SecurityCredential: explicitCred,
 		InitiatorPassword:  password,
 		CertificatePEM:     certPEM,
@@ -744,10 +744,10 @@ not a valid cert
 	explicitCred := "explicit-credential"
 
 	cfg := Config{
-		ConsumerKey:       "key",
-		ConsumerSecret:    "sec",
-		Passkey:           "pass",
-		BusinessShortCode: "174379",
+		ConsumerKey:        "key",
+		ConsumerSecret:     "sec",
+		Passkey:            "pass",
+		BusinessShortCode:  "174379",
 		SecurityCredential: explicitCred,
 		InitiatorPassword:  "password",
 		CertificatePEM:     malformedCert,

@@ -48,8 +48,8 @@ var (
 //   - initiatorPassword: The plaintext initiator password (e.g., "testapi" password from Daraja portal).
 //     Must not be empty. Must not contain trailing newlines (use printf '%s' when generating from files).
 //   - certPEM: Safaricom's public certificate in PEM format. Accepts either:
-//     - "CERTIFICATE" block (X.509 certificate) — parsed via x509.ParseCertificate
-//     - "PUBLIC KEY" block (PKIX public key) — parsed via x509.ParsePKIXPublicKey
+//   - "CERTIFICATE" block (X.509 certificate) — parsed via x509.ParseCertificate
+//   - "PUBLIC KEY" block (PKIX public key) — parsed via x509.ParsePKIXPublicKey
 //     Must not be empty and must contain a valid RSA public key. Only the first PEM block is used;
 //     trailing blocks or garbage bytes after the first block cause an error. Encrypted PEM blocks
 //     (with Proc-Type headers) are rejected. Private keys and PKCS#1 "RSA PUBLIC KEY" format
