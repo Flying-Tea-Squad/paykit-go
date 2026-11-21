@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -312,5 +313,79 @@ func TestNewTokenManager_NilClient(t *testing.T) {
 	tm := NewTokenManager(nil, "key", "secret", "http://localhost")
 	if tm.client == nil {
 		t.Error("expected default HTTP client when nil is passed, got nil")
+	}
+}
+
+func TestGetAccessToken_ShortTTLTokenIsCached(t *testing.T) {
+	var requestCount int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&requestCount, 1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		// expires_in (10s) is shorter than the default 60s expiry buffer;
+		// the token must still be cached instead of re-fetched per request.
+		_, _ = w.Write([]byte(`{"access_token": "short_ttl_token", "expires_in": "10"}`))
+	}))
+	defer server.Close()
+
+	tm := NewTokenManager(testHTTPClient(server.Client()), "key", "secret", server.URL)
+
+	token1, err := tm.GetAccessToken(context.Background())
+	if err != nil {
+		t.Fatalf("first call error: %v", err)
+	}
+	token2, err := tm.GetAccessToken(context.Background())
+	if err != nil {
+		t.Fatalf("second call error: %v", err)
+	}
+
+	if token1 != "short_ttl_token" || token2 != "short_ttl_token" {
+		t.Errorf("expected short_ttl_token, got %q and %q", token1, token2)
+	}
+	if got := atomic.LoadInt32(&requestCount); got != 1 {
+		t.Errorf("expected short-TTL token to be cached (1 HTTP request), got %d", got)
+	}
+}
+
+func TestGetAccessToken_TrailingSlashBaseURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/oauth/v1/generate" {
+			t.Errorf("expected path /oauth/v1/generate, got %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"access_token": "slash_token", "expires_in": "3599"}`))
+	}))
+	defer server.Close()
+
+	tm := NewTokenManager(testHTTPClient(server.Client()), "key", "secret", server.URL+"/")
+
+	token, err := tm.GetAccessToken(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error with trailing-slash base URL: %v", err)
+	}
+	if token != "slash_token" {
+		t.Errorf("expected slash_token, got %s", token)
+	}
+}
+
+func TestGetAccessToken_OversizedOAuthResponseIsBounded(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		// Return far more than the 64 KiB client-side read limit.
+		_, _ = w.Write(make([]byte, 128*1024))
+	}))
+	defer server.Close()
+
+	tm := NewTokenManager(testHTTPClient(server.Client()), "key", "secret", server.URL)
+
+	token, err := tm.GetAccessToken(context.Background())
+	if err == nil {
+		t.Fatalf("expected error for oversized oauth response, got token %q", token)
+	}
+	if !strings.Contains(err.Error(), "exceeds") && !strings.Contains(err.Error(), "limit") {
+		t.Errorf("expected bounded-response error, got %q", err.Error())
 	}
 }

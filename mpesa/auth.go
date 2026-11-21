@@ -16,6 +16,10 @@ import (
 	"github.com/Flying-Tea-Squad/paykit-go"
 )
 
+// maxOAuthResponseBytes bounds how much of the OAuth token response body the
+// client will read into memory (64 KiB), guarding against oversized upstream payloads.
+const maxOAuthResponseBytes = 64 * 1024
+
 // AuthResponse represents Daraja's OAuth token API response.
 type AuthResponse struct {
 	AccessToken string `json:"access_token"`
@@ -82,11 +86,10 @@ func (tm *TokenManager) GetAccessToken(ctx context.Context) (string, error) {
 // getAccessToken returns a valid M-Pesa access token using consumer key/secret.
 func (tm *TokenManager) getAccessToken(ctx context.Context) (string, error) {
 	now := time.Now()
-	buffer := tm.expiryBuffer
 
 	// Check cache under read lock
 	tm.mu.RLock()
-	if tm.accessToken != "" && now.Add(buffer).Before(tm.expiry) {
+	if tm.accessToken != "" && now.Add(tm.effectiveBufferLocked(now)).Before(tm.expiry) {
 		token := tm.accessToken
 		tm.mu.RUnlock()
 		return token, nil
@@ -99,7 +102,7 @@ func (tm *TokenManager) getAccessToken(ctx context.Context) (string, error) {
 
 	// Double-check after acquiring write lock
 	now = time.Now()
-	if tm.accessToken != "" && now.Add(buffer).Before(tm.expiry) {
+	if tm.accessToken != "" && now.Add(tm.effectiveBufferLocked(now)).Before(tm.expiry) {
 		return tm.accessToken, nil
 	}
 
@@ -112,6 +115,25 @@ func (tm *TokenManager) getAccessToken(ctx context.Context) (string, error) {
 	tm.expiry = expiry
 
 	return token, nil
+}
+
+// effectiveBufferLocked returns the expiry buffer to apply for cache checks.
+// When the remaining token TTL is shorter than the configured buffer, the buffer
+// is clamped to half the TTL so short-lived tokens stay cacheable until shortly
+// before they expire instead of being re-fetched on every request.
+//
+// Callers must hold tm.mu (read or write).
+func (tm *TokenManager) effectiveBufferLocked(now time.Time) time.Duration {
+	buffer := tm.expiryBuffer
+	if !tm.expiry.IsZero() {
+		if ttl := tm.expiry.Sub(now); ttl <= buffer {
+			buffer = ttl / 2
+			if buffer < 0 {
+				buffer = 0
+			}
+		}
+	}
+	return buffer
 }
 
 // fetchAccessToken executes the HTTP request to Daraja OAuth endpoint to retrieve a fresh access token.
@@ -138,9 +160,13 @@ func (tm *TokenManager) fetchAccessToken(ctx context.Context) (string, time.Time
 		_ = resp.Body.Close()
 	}()
 
-	body, err := io.ReadAll(resp.Body)
+	// Bound the response read so an oversized upstream payload cannot exhaust memory.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxOAuthResponseBytes+1))
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("mpesa: failed to read oauth response: %w", err)
+	}
+	if len(body) > maxOAuthResponseBytes {
+		return "", time.Time{}, fmt.Errorf("mpesa: oauth response exceeds the %d byte limit", maxOAuthResponseBytes)
 	}
 
 	if resp.StatusCode != http.StatusOK {
