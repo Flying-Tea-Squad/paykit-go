@@ -54,6 +54,10 @@ func NewTokenManager(client *paykit.HTTPClient, clientID, clientSecret, baseURL 
 
 // GetAccessToken returns a cached token or fetches a fresh one.
 func (tm *TokenManager) GetAccessToken(ctx context.Context) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -87,8 +91,14 @@ func (tm *TokenManager) GetAccessToken(ctx context.Context) (string, error) {
 
 // fetchAccessToken requests a token using OAuth2 client credentials.
 func (tm *TokenManager) fetchAccessToken(ctx context.Context) (string, time.Time, error) {
-	if tm.clientID == "" || tm.clientSecret == "" {
-		return "", time.Time{}, errors.New("airtel: client ID and client secret are required")
+	if tm.clientID == "" {
+		return "", time.Time{}, errors.New("airtel: client ID is required")
+	}
+	if tm.clientSecret == "" {
+		return "", time.Time{}, errors.New("airtel: client secret is required")
+	}
+	if strings.TrimSpace(tm.baseURL) == "" {
+		return "", time.Time{}, errors.New("airtel: base URL is required")
 	}
 
 	payload, err := json.Marshal(struct {
@@ -148,7 +158,7 @@ func (tm *TokenManager) fetchAccessToken(ctx context.Context) (string, time.Time
 			"airtel: oauth request failed: %w", err,
 		)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		// Avoid exposing response bodies containing sensitive data.

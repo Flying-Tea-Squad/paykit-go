@@ -3,8 +3,10 @@ package airtel
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -33,6 +35,12 @@ func TestGetAccessTokenSuccess(t *testing.T) {
 		if r.Header.Get("Content-Type") != "application/json" {
 			t.Error("expected JSON content type")
 		}
+		if r.Header.Get("Accept") != "application/json" {
+			t.Error("expected JSON accept header")
+		}
+		if r.Header.Get("Idempotency-Key") == "" {
+			t.Error("expected idempotency key")
+		}
 
 		var body struct {
 			ClientID     string `json:"client_id"`
@@ -59,6 +67,26 @@ func TestGetAccessTokenSuccess(t *testing.T) {
 	}
 	if requests.Load() != 1 {
 		t.Fatalf("expected 1 request, got %d", requests.Load())
+	}
+}
+
+func TestGetAccessTokenTrailingSlashBaseURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/auth/oauth2/token" {
+			t.Errorf("unexpected request path: %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"access_token":"token","expires_in":3600}`))
+	}))
+	defer server.Close()
+
+	client := paykit.NewHTTPClient(paykit.HTTPClientConfig{
+		IdempotencyPolicy: paykit.IdempotencyPolicyOptional,
+	})
+	client.SetTransport(server.Client().Transport)
+	tm := NewTokenManager(client, "id", "secret", server.URL+"/")
+
+	if _, err := tm.GetAccessToken(context.Background()); err != nil {
+		t.Fatalf("GetAccessToken() error = %v", err)
 	}
 }
 
@@ -156,14 +184,21 @@ func (*unexpectedTokenError) Error() string {
 
 func TestGetAccessTokenErrors(t *testing.T) {
 	tests := []struct {
-		name   string
-		status int
-		body   string
+		name       string
+		status     int
+		body       string
+		notContain string
 	}{
-		{"unauthorized", http.StatusUnauthorized, `{"error":"invalid_client"}`},
-		{"invalid JSON", http.StatusOK, `{invalid`},
-		{"empty token", http.StatusOK, `{"access_token":"","expires_in":3600}`},
-		{"invalid expiry", http.StatusOK, `{"access_token":"token","expires_in":0}`},
+		{
+			"unauthorized",
+			http.StatusUnauthorized,
+			`{"error":"invalid_client","detail":"sensitive upstream response"}`,
+			"sensitive upstream response",
+		},
+		{"invalid JSON", http.StatusOK, `{invalid`, ""},
+		{"empty token", http.StatusOK, `{"access_token":"","expires_in":3600}`, ""},
+		{"invalid expiry", http.StatusOK, `{"access_token":"token","expires_in":0}`, ""},
+		{"negative expiry", http.StatusOK, `{"access_token":"token","expires_in":-1}`, ""},
 	}
 
 	for _, tt := range tests {
@@ -178,14 +213,69 @@ func TestGetAccessTokenErrors(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected an error")
 			}
+			if tt.notContain != "" && strings.Contains(err.Error(), tt.notContain) {
+				t.Fatalf("error exposes response body: %v", err)
+			}
 		})
 	}
 }
 
 func TestGetAccessTokenMissingCredentials(t *testing.T) {
-	tm := NewTokenManager(nil, "", "", "http://localhost")
-	if _, err := tm.GetAccessToken(context.Background()); err == nil {
-		t.Fatal("expected missing credentials error")
+	tests := []struct {
+		name         string
+		clientID     string
+		clientSecret string
+		want         string
+	}{
+		{"client ID", "", "secret", "client ID is required"},
+		{"client secret", "id", "", "client secret is required"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tm := NewTokenManager(nil, tt.clientID, tt.clientSecret, "http://localhost")
+			_, err := tm.GetAccessToken(context.Background())
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("GetAccessToken() error = %v, want error containing %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetAccessTokenInvalidBaseURL(t *testing.T) {
+	for _, baseURL := range []string{"", " \t\r\n "} {
+		t.Run(fmt.Sprintf("%q", baseURL), func(t *testing.T) {
+			tm := NewTokenManager(nil, "id", "secret", baseURL)
+			_, err := tm.GetAccessToken(context.Background())
+			if err == nil || !strings.Contains(err.Error(), "base URL is required") {
+				t.Fatalf("GetAccessToken() error = %v, want base URL error", err)
+			}
+		})
+	}
+}
+
+func TestGetAccessTokenNilContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"access_token":"token","expires_in":3600}`))
+	}))
+	defer server.Close()
+
+	token, err := newAuthTestManager(server).GetAccessToken(nil)
+	if err != nil || token != "token" {
+		t.Fatalf("token=%q, error=%v", token, err)
+	}
+}
+
+func TestNewTokenManagerNilClient(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"access_token":"token","expires_in":3600}`))
+	}))
+	defer server.Close()
+
+	tm := NewTokenManager(nil, "id", "secret", server.URL)
+	token, err := tm.GetAccessToken(context.Background())
+	if err != nil || token != "token" {
+		t.Fatalf("token=%q, error=%v", token, err)
 	}
 }
 
