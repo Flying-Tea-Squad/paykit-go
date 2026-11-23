@@ -346,11 +346,37 @@ func TestC2BRegisterURL_Non2xxResponses(t *testing.T) {
 				t.Fatalf("expected nil response, got %#v", resp)
 			}
 
-			wantErr := fmt.Sprintf("unexpected status code: %d", tt.statusCode)
+			wantErr := fmt.Sprintf("mpesa: unexpected status code %d", tt.statusCode)
 			if err == nil || err.Error() != wantErr {
 				t.Fatalf("expected error %q, got %v", wantErr, err)
 			}
 		})
+	}
+}
+
+func TestC2BRegisterURL_HTTPErrorWithBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"errorCode":"400.002.02","errorMessage":"Bad Request - Invalid URL"}`))
+	}))
+	defer server.Close()
+
+	client := &Client{
+		baseURL:      server.URL,
+		httpClient:   testHTTPClient(server.Client()),
+		tokenManager: fakeTokenProvider{},
+	}
+
+	_, err := client.C2BRegisterURL(context.Background(), C2BRegisterRequest{
+		ShortCode:       "600000",
+		ConfirmationURL: "https://example.com/c",
+		ValidationURL:   "https://example.com/v",
+	})
+	if err == nil || !strings.Contains(err.Error(), "Invalid URL") {
+		t.Errorf("expected error containing diagnostic body, got %v", err)
+	}
+	if !strings.HasPrefix(err.Error(), "mpesa: unexpected status code 400:") {
+		t.Errorf("expected error to start with 'mpesa: unexpected status code 400:', got %v", err)
 	}
 }
 
@@ -597,6 +623,26 @@ func TestC2BSimulate_Validation(t *testing.T) {
 			},
 			wantErr: "amount must be greater than zero",
 		},
+		{
+			name: "invalid CommandID",
+			req: C2BSimulateRequest{
+				ShortCode: "600000",
+				Amount:    100,
+				Msisdn:    "254700000001",
+				CommandID: "InvalidCommand",
+			},
+			wantErr: "invalid command ID \"InvalidCommand\", must be 'CustomerPayBillOnline' or 'CustomerBuyGoodsOnline'",
+		},
+		{
+			name: "invalid lowercase CommandID",
+			req: C2BSimulateRequest{
+				ShortCode: "600000",
+				Amount:    100,
+				Msisdn:    "254700000001",
+				CommandID: "customerpaybillonline",
+			},
+			wantErr: "invalid command ID \"customerpaybillonline\", must be 'CustomerPayBillOnline' or 'CustomerBuyGoodsOnline'",
+		},
 	}
 
 	for _, tt := range tests {
@@ -665,11 +711,37 @@ func TestC2BSimulate_Non2xxResponses(t *testing.T) {
 				t.Fatalf("expected nil response, got %#v", resp)
 			}
 
-			wantErr := fmt.Sprintf("unexpected status code: %d", tt.statusCode)
+			wantErr := fmt.Sprintf("mpesa: unexpected status code %d", tt.statusCode)
 			if err == nil || err.Error() != wantErr {
 				t.Fatalf("expected error %q, got %v", wantErr, err)
 			}
 		})
+	}
+}
+
+func TestC2BSimulate_HTTPErrorWithBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"errorCode":"400.002.02","errorMessage":"Bad Request - Invalid ShortCode"}`))
+	}))
+	defer server.Close()
+
+	client := &Client{
+		baseURL:      server.URL,
+		httpClient:   testHTTPClient(server.Client()),
+		tokenManager: fakeTokenProvider{},
+	}
+
+	_, err := client.C2BSimulate(context.Background(), C2BSimulateRequest{
+		ShortCode: "600000",
+		Amount:    100,
+		Msisdn:    "254700000001",
+	})
+	if err == nil || !strings.Contains(err.Error(), "Invalid ShortCode") {
+		t.Errorf("expected error containing diagnostic body, got %v", err)
+	}
+	if !strings.HasPrefix(err.Error(), "mpesa: unexpected status code 400:") {
+		t.Errorf("expected error to start with 'mpesa: unexpected status code 400:', got %v", err)
 	}
 }
 

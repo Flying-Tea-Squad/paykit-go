@@ -72,19 +72,11 @@ func (r *C2BRegisterResponse) UnmarshalJSON(data []byte) error {
 	if r == nil {
 		return errors.New("mpesa: UnmarshalJSON on nil *C2BRegisterResponse")
 	}
-	type Alias C2BRegisterResponse
-	aux := struct {
-		OriginatorCoversationID string `json:"OriginatorCoversationID"`
-		*Alias
-	}{
-		Alias: (*Alias)(r),
-	}
-	if err := json.Unmarshal(data, &aux); err != nil {
+	resp, err := unmarshalC2BResponse(data)
+	if err != nil {
 		return err
 	}
-	if r.OriginatorConversationID == "" && aux.OriginatorCoversationID != "" {
-		r.OriginatorConversationID = aux.OriginatorCoversationID
-	}
+	*r = C2BRegisterResponse(resp)
 	return nil
 }
 
@@ -117,20 +109,39 @@ func (r *C2BSimulateResponse) UnmarshalJSON(data []byte) error {
 	if r == nil {
 		return errors.New("mpesa: UnmarshalJSON on nil *C2BSimulateResponse")
 	}
-	type Alias C2BSimulateResponse
+	resp, err := unmarshalC2BResponse(data)
+	if err != nil {
+		return err
+	}
+	*r = C2BSimulateResponse(resp)
+	return nil
+}
+
+// c2bResponse is an unexported common response structure used to deduplicate
+// custom unmarshaling logic between C2BRegisterResponse and C2BSimulateResponse.
+type c2bResponse struct {
+	OriginatorConversationID string `json:"OriginatorConversationID"`
+	ConversationID           string `json:"ConversationID"`
+	ResponseCode             string `json:"ResponseCode,omitempty"`
+	ResponseDescription      string `json:"ResponseDescription"`
+}
+
+func unmarshalC2BResponse(data []byte) (c2bResponse, error) {
+	var resp c2bResponse
+	type Alias c2bResponse
 	aux := struct {
 		OriginatorCoversationID string `json:"OriginatorCoversationID"`
 		*Alias
 	}{
-		Alias: (*Alias)(r),
+		Alias: (*Alias)(&resp),
 	}
 	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
+		return c2bResponse{}, err
 	}
-	if r.OriginatorConversationID == "" && aux.OriginatorCoversationID != "" {
-		r.OriginatorConversationID = aux.OriginatorCoversationID
+	if resp.OriginatorConversationID == "" && aux.OriginatorCoversationID != "" {
+		resp.OriginatorConversationID = aux.OriginatorCoversationID
 	}
-	return nil
+	return resp, nil
 }
 
 // B2CRequest encapsulates parameters required to initiate a Business-to-Customer (B2C) payout.

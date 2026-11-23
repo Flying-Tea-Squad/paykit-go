@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -61,7 +62,7 @@ func (c *Client) C2BRegisterURL(ctx context.Context, req C2BRegisterRequest) (*C
 // Validation rules:
 //   - ShortCode and Msisdn must be non-empty.
 //   - Amount must be greater than zero.
-//   - CommandID defaults to "CustomerPayBillOnline" if empty.
+//   - CommandID defaults to "CustomerPayBillOnline" if empty (valid values: "CustomerPayBillOnline" or "CustomerBuyGoodsOnline").
 //
 // The request sends an authenticated POST to /mpesa/c2b/v1/simulate.
 func (c *Client) C2BSimulate(ctx context.Context, req C2BSimulateRequest) (*C2BSimulateResponse, error) {
@@ -77,6 +78,8 @@ func (c *Client) C2BSimulate(ctx context.Context, req C2BSimulateRequest) (*C2BS
 
 	if req.CommandID == "" {
 		req.CommandID = CommandIDCustomerPayBillOnline
+	} else if req.CommandID != CommandIDCustomerPayBillOnline && req.CommandID != CommandIDCustomerBuyGoodsOnline {
+		return nil, fmt.Errorf("mpesa: invalid command ID %q, must be 'CustomerPayBillOnline' or 'CustomerBuyGoodsOnline'", req.CommandID)
 	}
 
 	var resp C2BSimulateResponse
@@ -98,12 +101,12 @@ func (c *Client) doAuthenticatedPost(
 		return errors.New("mpesa: client is nil")
 	}
 	if c.tokenManager == nil {
-		return fmt.Errorf("mpesa: token manager is required")
+		return errors.New("mpesa: token manager is required")
 	}
 
 	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return err
+		return fmt.Errorf("mpesa: failed to encode request: %w", err)
 	}
 
 	endpoint := strings.TrimRight(c.baseURL, "/") + path
@@ -114,12 +117,12 @@ func (c *Client) doAuthenticatedPost(
 		bytes.NewReader(body),
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("mpesa: failed to create request: %w", err)
 	}
 
 	token, err := c.tokenManager.GetAccessToken(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("mpesa: failed to get access token: %w", err)
 	}
 
 	httpReq.Header.Set("Authorization", "Bearer "+token)
@@ -135,19 +138,23 @@ func (c *Client) doAuthenticatedPost(
 
 	resp, err := httpClient.Do(ctx, httpReq)
 	if err != nil {
-		return err
+		return fmt.Errorf("mpesa: request failed: %w", err)
 	}
 	defer func() {
 		_ = resp.Body.Close()
 	}()
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if msg := strings.TrimSpace(string(body)); msg != "" {
+			return fmt.Errorf("mpesa: unexpected status code %d: %s", resp.StatusCode, msg)
+		}
+		return fmt.Errorf("mpesa: unexpected status code %d", resp.StatusCode)
 	}
 
 	if result != nil {
 		if err := json.NewDecoder(resp.Body).Decode(result); err != nil {
-			return err
+			return fmt.Errorf("mpesa: failed to decode response: %w", err)
 		}
 	}
 
