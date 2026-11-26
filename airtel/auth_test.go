@@ -260,7 +260,7 @@ func TestGetAccessTokenNilContext(t *testing.T) {
 	}))
 	defer server.Close()
 
-	token, err := newAuthTestManager(server).GetAccessToken(nil)
+	token, err := newAuthTestManager(server).GetAccessToken(nil) //nolint:staticcheck // intentionally testing nil context handling
 	if err != nil || token != "token" {
 		t.Fatalf("token=%q, error=%v", token, err)
 	}
