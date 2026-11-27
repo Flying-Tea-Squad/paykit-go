@@ -4,9 +4,17 @@ import (
 	"encoding/json"
 )
 
-// ChargeResponse represents the result of a charge initiation.
+// ChargeResponse represents the result of a customer payment charge initiation.
+//
+// On asynchronous rails (such as M-Pesa STK Push), a successful charge call returns
+// Success == true with Status set to a non-terminal state ([StatusPendingAction] or
+// [StatusProcessing]), indicating the prompt was sent to the customer's phone.
+// Final payment confirmation is delivered via asynchronous webhook.
+//
+// If the provider rejects the initiation (e.g., invalid phone number or invalid credentials),
+// Success is false, Message contains human-readable feedback, and Status may be [StatusFailed].
 type ChargeResponse struct {
-	// Success indicates whether the charge was initiated or processed successfully.
+	// Success indicates whether the charge request was accepted by the provider.
 	Success bool `json:"success"`
 
 	// Message contains human-readable status information or provider error descriptions.
@@ -19,6 +27,7 @@ type ChargeResponse struct {
 	CheckoutRequestID string `json:"checkout_request_id,omitempty"`
 
 	// Status indicates the current normalized transaction status.
+	// For newly initiated mobile push payments, this is typically [StatusPendingAction] or [StatusProcessing].
 	Status TransactionStatus `json:"status,omitempty"`
 
 	// Raw holds the original raw provider payload for auditing and troubleshooting.
@@ -29,6 +38,9 @@ type ChargeResponse struct {
 }
 
 // DisbursementResponse represents the result of a disbursement initiation.
+//
+// Success indicates that the provider accepted the payout instruction. Final settlement
+// may occur asynchronously, reflected in Status and confirmed by provider callbacks.
 type DisbursementResponse struct {
 	// Success indicates whether the payout was accepted or processed successfully.
 	Success bool `json:"success"`
@@ -60,7 +72,8 @@ type StatusResponse struct {
 	// TransactionID is the provider's transaction identifier.
 	TransactionID string `json:"transaction_id,omitempty"`
 
-	// Status is the normalized transaction state.
+	// Status is the normalized transaction state. Use [TransactionStatus.IsTerminal]
+	// to determine if the transaction has reached a final state.
 	Status TransactionStatus `json:"status,omitempty"`
 
 	// Amount is the actual settled amount (may differ from requested).
@@ -73,7 +86,7 @@ type StatusResponse struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-// RefundResponse represents the result of a refund initiation.
+// RefundResponse represents the result of a refund or reversal initiation.
 type RefundResponse struct {
 	// Success indicates whether the refund/reversal was initiated successfully.
 	Success bool `json:"success"`
@@ -97,7 +110,7 @@ type RefundResponse struct {
 	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
-// BalanceResponse contains account balance information.
+// BalanceResponse contains account ledger and available balance information.
 type BalanceResponse struct {
 	// Success indicates whether balance retrieval succeeded.
 	Success bool `json:"success"`
@@ -119,7 +132,7 @@ type BalanceResponse struct {
 }
 
 // Response represents the legacy standardized response.
-// Deprecated: Prefer operation-specific responses such as ChargeResponse or DisbursementResponse.
+// Deprecated: Prefer operation-specific responses such as [ChargeResponse] or [DisbursementResponse].
 type Response struct {
 	Success       bool            `json:"success"`
 	Message       string          `json:"message,omitempty"`
